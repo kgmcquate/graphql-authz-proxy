@@ -19,8 +19,8 @@ jobs:
       - name: Install uv
         run: pip install uv
       - name: Install dependencies with uv
-        run: uv sync --dev
+        run: |
+          uv sync --dev
+          uv run pytest tests/
         working-directory: ./graphql_authz_proxy
-      - name: Run tests
-        run: pytest tests/
-        working-directory: ./graphql_authz_proxy
+
