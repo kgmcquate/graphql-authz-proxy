@@ -30,6 +30,12 @@ class UsersConfig(_ConfigParser, BaseModel):
             if user.username == username.strip():
                 return user
         return None
+    
+    def get_user_by_email(self, email: str) -> Optional[UserConfig]:
+        for user in self.users:
+            if user.email == email.strip():
+                return user
+        return None
 
 
 class GraphQLOperationType(str, Enum):

@@ -22,5 +22,6 @@ def get_value_of_jsonpath(data, path: str):
 def extract_user_from_headers(headers: dict) -> tuple[str, str, str]:
     user_email = headers.get('X-Forwarded-Email', '')
     user_preferred_username = headers.get('X-Forwarded-Preferred-Username', '')
+    user = headers.get('X-Forwarded-User', '')
     access_token = headers.get('X-Forwarded-Access-Token', '')
-    return user_email, user_preferred_username, access_token
+    return user_email, user, access_token

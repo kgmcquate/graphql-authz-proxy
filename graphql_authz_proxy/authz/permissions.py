@@ -43,6 +43,7 @@ def check_operation_permission(
         if variables is not None:
             param_allowed, param_reason = check_parameter_restrictions(group_rules, operation_name, variables)
 
+        operation_allowed = False
         if any(operation_name == rule.operation_name or rule.operation_name == "*" for rule in group_rules):
             operation_allowed = True
 
@@ -52,7 +53,5 @@ def check_operation_permission(
             logging.warning(f"Group {group.name} allows {operation_name} but parameter restrictions failed: {param_reason}")
         elif not operation_allowed and param_allowed:
             logging.warning(f"Group {group.name} denies {operation_name}")
-
-        return True, f"Group {group.name} allows {operation_name}"
 
     return False, f"No permission for mutation {operation_name}"

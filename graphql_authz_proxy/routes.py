@@ -1,12 +1,11 @@
 from graphql import parse, OperationDefinitionNode, OperationType
 import requests
 from flask import request, jsonify, Response, current_app
-from graphql_authz_proxy.authz.github import get_github_user_info
-from graphql_authz_proxy.authz.utils import get_value_of_jsonpath, extract_user_from_headers
+from graphql_authz_proxy.authz.utils import extract_user_from_headers
 from graphql_authz_proxy.authz.permissions import check_operation_permission
 from graphql_authz_proxy.cli import flask_app
 from graphql_authz_proxy.models import UserConfig, UsersConfig, GroupsConfig
-from functools import lru_cache
+from urllib.parse import urljoin
 
 @flask_app.route('/', defaults={'path': ''})
 @flask_app.route('/<path:path>')
@@ -46,16 +45,14 @@ def proxy_all(path):
 
 @flask_app.route('/health', methods=['GET'])
 def health_check():
+    groups: GroupsConfig = current_app.config.get('groups_config')
     config_status = {
-        'users_configured': len(current_app.config.get('users_config', {}).get('users', [])),
-        'groups_configured': len(current_app.config.get('groups_config', {}).get('groups', [])),
-        'mutation_rules': len(current_app.config.get('policies_config', {}).get('mutation_rules', [])),
-        'config_loaded': bool(current_app.config)
+        'groups_configured': len(groups.groups)
     }
     
     return jsonify({
         'status': 'healthy', 
-        'service': 'dagster-api-gateway',
+        'service': 'graphql-authz-proxy',
         'features': {
             'graphql_parsing': True,
             'mutation_detection': True,
@@ -70,128 +67,134 @@ def health_check():
 
 @flask_app.route('/graphql', methods=['POST'])
 def proxy_graphql():
-    # try:
-    # # Extract user information
-    user_email, username, access_token = extract_user_from_headers(request.headers)
+    try:
+        # Extract user information
+        current_app.logger.info(f"Extracting user information from headers: {request.headers}")
+        user_email, username, access_token = extract_user_from_headers(request.headers)
 
-    users_config: UsersConfig = current_app.config.get('users_config')
-    groups_config: GroupsConfig = current_app.config.get('groups_config')
+        users_config: UsersConfig = current_app.config.get('users_config')
+        groups_config: GroupsConfig = current_app.config.get('groups_config')
 
-    user: UserConfig = users_config.get_user(username)
+        user: UserConfig = users_config.get_user(username)
 
-    if user is None:
+        if user is None:
+            user = users_config.get_user_by_email(user_email)
+
+        if user is None:
+            return jsonify({
+                'errors': [{
+                    'message': 'User not configured.',
+                    'extensions': {
+                        'code': 'FORBIDDEN',
+                        'user': username,
+                        'user_email': user_email
+                    }
+                }]
+            }), 403
+
+        user_groups = [groups_config.get_group(group_name) for group_name in user.groups]
+
+        # Get the GraphQL query
+        if request.is_json:
+            data = request.get_json()
+            query = data.get('query', '') if data else ''
+            variables = data.get('variables', {}) if data else {}
+            operation_name = data.get('operationName', '') if data else ''
+        else:
+            query = request.form.get('query', '')
+            variables = {}
+            operation_name = ''
+
+
+        document = parse(query)
+
+        for definition in document.definitions:
+            # mutation_fields = []
+            # query_fields = []
+            if not isinstance(definition, OperationDefinitionNode):
+                continue
+                # definition.name
+                # if definition.operation == OperationType.MUTATION:
+                #     for selection in definition.selection_set.selections:
+                #         if hasattr(selection, 'name'):
+                #             mutation_fields.append(selection.name.value)
+                # elif definition.operation == OperationType.QUERY:
+                #     for selection in definition.selection_set.selections:
+                #         if hasattr(selection, 'name'):
+                #             query_fields.append(selection.name.value)
+
+
+            if definition.operation == OperationType.MUTATION:
+                mutation_allowed, mutation_allowed_reason = check_operation_permission(
+                    user_groups,
+                    OperationType.MUTATION,
+                    definition.name,
+                    variables
+                )
+
+
+                if not mutation_allowed:
+                    current_app.logger.warning(f"❌ Mutation '{operation_name}' denied for user {username} ({user_email})")
+                    current_app.logger.warning(f"❌ Reason: {mutation_allowed_reason}")
+                    return jsonify({
+                        'errors': [{
+                            'message': f'Access denied: {mutation_allowed_reason}',
+                            'extensions': {
+                                'code': 'FORBIDDEN',
+                                'user': username,
+                                'user_email': user_email,
+                                # 'user_groups': user_groups,
+                                'mutation': operation_name,
+                                'reason': mutation_allowed_reason
+                            }
+                        }]
+                    }), 403
+            
+            elif definition.operation == OperationType.QUERY:
+                query_allowed, query_allowed_reason = check_operation_permission(
+                    user_groups,
+                    OperationType.QUERY,
+                    definition.name,
+                    variables
+                )
+
+                if not query_allowed:
+                    current_app.logger.warning(f"❌ Query '{operation_name}' denied for user {username} ({user_email})")
+                    current_app.logger.warning(f"❌ Reason: {query_allowed_reason}")
+                    return jsonify({
+                        'errors': [{
+                            'message': f'Access denied: {query_allowed_reason}',
+                            'extensions': {
+                                'code': 'FORBIDDEN',
+                                'user': username,
+                                'user_email': user_email,
+                                # 'user_groups': user_groups,
+                                'query': operation_name,
+                                'reason': query_allowed_reason
+                            }
+                        }]
+                    }), 403
+
+        # Forward the request to Dagster webserver
+        headers = dict(request.headers)
+        headers.pop('Host', None)
+        headers.pop('Content-Length', None)
+        response = requests.post(
+            urljoin(current_app.config['upstream_url'], 'graphql'),
+            data=request.get_data(),
+            headers=headers,
+            timeout=30
+        )
+        return Response(
+            response.content,
+            status=response.status_code,
+            headers=dict(response.headers)
+        )
+    except Exception as e:
+        current_app.logger.error(f"Error processing request: {str(e)}")
         return jsonify({
             'errors': [{
-                'message': 'User not configured.',
-                'extensions': {
-                    'code': 'FORBIDDEN',
-                    'user': username,
-                    'user_email': user_email
-                }
+                'message': 'Internal server error',
+                'extensions': {'code': 'INTERNAL_ERROR'}
             }]
-        }), 403
-
-    user_groups = [groups_config.get_group(group_name) for group_name in user.groups]
-
-    # Get the GraphQL query
-    if request.is_json:
-        data = request.get_json()
-        query = data.get('query', '') if data else ''
-        variables = data.get('variables', {}) if data else {}
-        operation_name = data.get('operationName', '') if data else ''
-    else:
-        query = request.form.get('query', '')
-        variables = {}
-        operation_name = ''
-
-
-    document = parse(query)
-
-    for definition in document.definitions:
-        mutation_fields = []
-        query_fields = []
-        if isinstance(definition, OperationDefinitionNode):
-            if definition.operation == OperationType.MUTATION:
-                for selection in definition.selection_set.selections:
-                    if hasattr(selection, 'name'):
-                        mutation_fields.append(selection.name.value)
-            elif definition.operation == OperationType.QUERY:
-                for selection in definition.selection_set.selections:
-                    if hasattr(selection, 'name'):
-                        query_fields.append(selection.name.value)
-
-
-
-        mutation_allowed, mutation_allowed_reason = check_operation_permission(
-            user_groups,
-            OperationType.MUTATION,
-            mutation_fields,
-            variables
-        )
-
-
-        if not mutation_allowed:
-            current_app.logger.warning(f"❌ Mutation '{operation_name}' denied for user {username} ({user_email})")
-            current_app.logger.warning(f"❌ Reason: {mutation_allowed_reason}")
-            return jsonify({
-                'errors': [{
-                    'message': f'Access denied: {mutation_allowed_reason}',
-                    'extensions': {
-                        'code': 'FORBIDDEN',
-                        'user': username,
-                        'user_email': user_email,
-                        'user_groups': user_groups,
-                        'mutation': operation_name,
-                        'reason': mutation_allowed_reason
-                    }
-                }]
-            }), 403
-        
-
-        query_allowed, query_allowed_reason = check_operation_permission(
-            user_groups,
-            OperationType.QUERY,
-            query_fields,
-            variables
-        )
-
-        if not query_allowed:
-            current_app.logger.warning(f"❌ Query '{operation_name}' denied for user {username} ({user_email})")
-            current_app.logger.warning(f"❌ Reason: {query_allowed_reason}")
-            return jsonify({
-                'errors': [{
-                    'message': f'Access denied: {query_allowed_reason}',
-                    'extensions': {
-                        'code': 'FORBIDDEN',
-                        'user': username,
-                        'user_email': user_email,
-                        'user_groups': user_groups,
-                        'query': operation_name,
-                        'reason': query_allowed_reason
-                    }
-                }]
-            }), 403
-
-    # Forward the request to Dagster webserver
-    headers = dict(request.headers)
-    headers.pop('Host', None)
-    headers.pop('Content-Length', None)
-    response = requests.post(
-        current_app.config['upstream_url'] + '/graphql',
-        data=request.get_data(),
-        headers=headers,
-        timeout=30
-    )
-    return Response(
-        response.content,
-        status=response.status_code,
-        headers=dict(response.headers)
-    )
-    # except Exception as e:
-    #     current_app.logger.error(f"Error processing request: {str(e)}")
-    #     return jsonify({
-    #         'errors': [{
-    #             'message': 'Internal server error',
-    #             'extensions': {'code': 'INTERNAL_ERROR'}
-    #         }]
-        # }), 500
+        }), 500

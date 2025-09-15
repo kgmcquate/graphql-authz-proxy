@@ -19,4 +19,4 @@ ENV FLASK_APP=graphql_authz_proxy/main.py
 ENV FLASK_RUN_PORT=8080
 ENV FLASK_RUN_HOST=0.0.0.0
 
-ENTRYPOINT ["gqlproxy"]
+ENTRYPOINT ["uv", "run", "gqlproxy"]
