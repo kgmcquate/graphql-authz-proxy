@@ -1,0 +1,7 @@
+
+users:
+  - email: "kgmcquate@gmail.com"
+    username: "kgmcquate"
+    groups:
+      - "admin"
+      - "data-engineers"
