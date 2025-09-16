@@ -1,14 +1,12 @@
 from graphql import parse, OperationDefinitionNode, OperationType
 import requests
-from flask import request, jsonify, Response, current_app
+from flask import Flask, request, jsonify, Response, current_app
 from graphql_authz_proxy.authz.utils import extract_user_from_headers
 from graphql_authz_proxy.authz.permissions import check_operation_permission
-from graphql_authz_proxy.cli import flask_app
 from graphql_authz_proxy.models import UserConfig, UsersConfig, GroupsConfig
 from urllib.parse import urljoin
 
-@flask_app.route('/', defaults={'path': ''})
-@flask_app.route('/<path:path>')
+
 def proxy_all(path):
     """Proxy all other requests to Dagster webserver"""
     try:
@@ -42,8 +40,8 @@ def proxy_all(path):
                 'extensions': {'code': 'PROXY_ERROR'}
             }]
         }), 502
+        
 
-@flask_app.route('/health', methods=['GET'])
 def health_check():
     groups: GroupsConfig = current_app.config.get('groups_config')
     config_status = {
@@ -65,7 +63,6 @@ def health_check():
     })
 
 
-@flask_app.route('/graphql', methods=['POST'])
 def proxy_graphql():
     try:
         # Extract user information
@@ -76,6 +73,8 @@ def proxy_graphql():
         groups_config: GroupsConfig = current_app.config.get('groups_config')
 
         user: UserConfig = users_config.get_user(username)
+
+        upstream_graphql_url: str = urljoin(current_app.config['upstream_url'], current_app.config['upstream_graphql_path'])
 
         if user is None:
             user = users_config.get_user_by_email(user_email)
@@ -109,20 +108,8 @@ def proxy_graphql():
         document = parse(query)
 
         for definition in document.definitions:
-            # mutation_fields = []
-            # query_fields = []
             if not isinstance(definition, OperationDefinitionNode):
                 continue
-                # definition.name
-                # if definition.operation == OperationType.MUTATION:
-                #     for selection in definition.selection_set.selections:
-                #         if hasattr(selection, 'name'):
-                #             mutation_fields.append(selection.name.value)
-                # elif definition.operation == OperationType.QUERY:
-                #     for selection in definition.selection_set.selections:
-                #         if hasattr(selection, 'name'):
-                #             query_fields.append(selection.name.value)
-
 
             if definition.operation == OperationType.MUTATION:
                 mutation_allowed, mutation_allowed_reason = check_operation_permission(
@@ -177,10 +164,10 @@ def proxy_graphql():
 
         # Forward the request to Dagster webserver
         headers = dict(request.headers)
-        headers.pop('Host', None)
-        headers.pop('Content-Length', None)
+        # headers.pop('Host', None)
+        # headers.pop('Content-Length', None)
         response = requests.post(
-            urljoin(current_app.config['upstream_url'], 'graphql'),
+            upstream_graphql_url,
             data=request.get_data(),
             headers=headers,
             timeout=30
@@ -198,3 +185,12 @@ def proxy_graphql():
                 'extensions': {'code': 'INTERNAL_ERROR'}
             }]
         }), 500
+
+
+def register_routes(flask_app: Flask, graphql_path: str = "/graphql", healthcheck_path: str = "/gqlproxy/health"):
+
+    flask_app.route('/', defaults={'path': ''})(proxy_all)
+    flask_app.route('/<path:path>')(proxy_all)
+
+    flask_app.route(healthcheck_path, methods=['GET'])(health_check)
+    flask_app.route(graphql_path, methods=['POST'])(proxy_graphql)
