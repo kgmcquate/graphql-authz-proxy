@@ -28,6 +28,20 @@ docker run -p 8080:8080 \
   --upstream-url <UPSTREAM_GRAPHQL_URL> --users-config /app/users.yaml --groups-config /app/groups.yaml
 ```
 
+## Typical Architecture
+Here are some common deployment architectures for the proxy:
+
+### Using OAuth Proxy for Authentication
+```mermaid
+graph TD;
+    A[Client] --> |Login Request| B[OAuth Proxy];
+    
+    B --> |GraphQL Request| C[GraphQL Authz Proxy];
+    C -->|Authorized Request| D[Upstream GraphQL Server];
+    C -->|Unauthorized Response| B;
+    E[Identity Provider] -->|User Authenticated| B;
+```
+
 ## Request Header Requirements
 These headers must be included in each request to identify the user:
   - `X-Forwarded-Email`: The email address of the user
