@@ -1,71 +1,186 @@
 # graphql-authz-proxy
-Proxy to enforce authorization rules on GraphQL APIs
 
-# Docker Image
+Proxy to enforce authorization rules on GraphQL APIs.
 
+## Features
 
-# Configuration
-## Users
+- Enforces fine-grained authorization for GraphQL queries and mutations
+- Supports config-driven user/group/policy management
+- Easy integration with existing GraphQL servers
+
+## Usage
+
+### Running the Proxy
+
+You can run the proxy using the CLI:
+
+```bash
+gqlproxy start --upstream-url <UPSTREAM_GRAPHQL_URL> --users-config <users.yaml> --groups-config <groups.yaml>
+```
+
+Or with Docker:
+
+```bash
+docker run -p 8080:8080 \
+  -v $(pwd)/users.yaml:/app/users.yaml \
+  -v $(pwd)/groups.yaml:/app/groups.yaml \
+  kgmcquate/graphql-authz-proxy:latest \
+  --upstream-url <UPSTREAM_GRAPHQL_URL> --users-config /app/users.yaml --groups-config /app/groups.yaml
+```
+
+## Configuration
+
+### Users Config
+
 ```yaml
 users:
   - email: "kgmcquate@gmail.com"
     username: "kgmcquate"
     groups:
       - "admin"
-      - "data-engineers"
-  - email: "jimbob@gmail.com"
-    username: "jimbob"
+  - email: "bob@company.com"
+    username: "bob"
     groups:
       - "viewers"
 ```
 
-## Groups
+### Groups Config
+
 ```yaml
 groups:
   - name: "admin"
     description: "Full administrative access"
     permissions:
       mutations:
-        - operation_name: "*"  # Allow all mutations
+        effect: "allow"
+        fields:
+          - field_name: "*"
       queries:
-        - operation_name: "*"  # Allow all queries
+        effect: "allow"
+        fields:
+          - field_name: "*"
 
-  - name: "data-engineers"
-    description: "Data engineering team with limited mutation access"
+  - name: "engineering"
+    description: "Less restrictive permissions for dev testing"
     permissions:
       mutations:
-        - operation_name: "launchPipelineExecution"
-          parameter_restrictions:
-            - jsonpath: "executionParams.selector.repositoryLocationName"
-              allowed_values:
-                - "k8s-example-user-code-1"
-                - "k8s-example-user-code-2"
-                - "production-data-pipelines"
-            - jsonpath: "executionParams.mode"
-              allowed_values:
-                - "default"
-                - "development"
-            - jsonpath: "executionParams.executionMetadata.tags[*].key"
-              allowed_values:
-                - "dagster/from_ui"
-                - "environment"
-                - "team"
-            - jsonpath: "executionParams.selector.pipelineName"
-              allowed_values:
-                - "data_ingestion_pipeline"
-                - "daily_reports_pipeline"
-                - "feature_engineering_pipeline"
-        - operation_name: "launchRun"
-        - operation_name: "launchPipelineReexecution"
-        - operation_name: "logTelemetry"
+        effect: "allow"
+        fields:
+          - field_name: "user"
+            arguments:
+              - argument_name: "name"
+                values: ["Ann Berry"]
+            fields:
+              - field_name: first_name
+              - field_name: last_name
+              - field_name: user_id
       queries:
-        - operation_name: "*"  # Allow all queries
+        effect: "allow"
+        fields:
+          - field_name: "*"
 
   - name: "viewers"
     description: "Read-only access"
     permissions:
-      mutations: []  # No mutations allowed
+      mutations:
+        effect: "deny"
+        fields:
+          - field_name: "*"
       queries:
-        - operation_name: "*" # All queries allowed
-
+        effect: "allow"
+        fields:
+          - field_name: "user"
+            arguments:
+              - argument_name: "name"
+                values: ["Ann"]
 ```
+
+## GraphQL Query Examples: Allowed vs Denied
+
+Below are example queries and their authorization results for the `viewers` and `engineering` groups:
+
+### Example 1: Allowed for viewers
+
+**Query:**
+
+```graphql
+query {
+  user(name: "Ann") {
+    first_name
+    last_name
+    user_id
+  }
+}
+```
+
+**Result:** Allowed for `viewers` (matches field and argument restriction)
+
+### Example 2: Denied for viewers
+
+**Query:**
+
+```graphql
+query {
+  user(name: "Bob") {
+    first_name
+    last_name
+    user_id
+  }
+}
+```
+
+**Result:** Denied for `viewers` (argument `name: "Bob"` not allowed)
+
+### Example 3: Allowed for engineering
+
+**Query:**
+
+```graphql
+mutation {
+  user(name: "Ann Berry") {
+    first_name
+    last_name
+    user_id
+  }
+}
+```
+
+**Result:** Allowed for `engineering` (mutation on `user` with allowed argument and fields)
+
+### Example 4: Denied for engineering
+
+**Query:**
+
+```graphql
+mutation {
+  user(name: "Ann Berry") {
+    email
+    phone
+  }
+}
+```
+
+**Result:** Denied for `engineering` (fields `email` and `phone` not allowed)
+
+### Example 5: Denied for viewers (mutation)
+
+**Query:**
+
+```graphql
+mutation {
+  user(name: "Ann") {
+    first_name
+  }
+}
+```
+
+**Result:** Denied for `viewers` (all mutations denied)
+
+## Notes
+
+- All config files must be valid YAML and match the schema above.
+- `field_name: "*"` means all fields/operations are allowed/denied.
+
+## License
+
+MIT

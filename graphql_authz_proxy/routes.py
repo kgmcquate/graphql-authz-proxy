@@ -150,16 +150,16 @@ def proxy_graphql():
                 else:
                     continue
                 
-
-                if field_restrictions:
-                    is_allowed, reason, parent_fields = check_field_restrictions(
-                        field_nodes=field_dict,
-                        field_restrictions=field_restrictions
-                    )
-                elif field_allowances:
+                # Explicit allowances override denials
+                if field_allowances:
                     is_allowed, reason, parent_fields = check_field_allowances(
                         field_nodes=field_dict,
                         field_rules=field_allowances
+                    )
+                elif field_restrictions:
+                    is_allowed, reason, parent_fields = check_field_restrictions(
+                        field_nodes=field_dict,
+                        field_restrictions=field_restrictions
                     )
                 else:
                     raise Exception(f"No field restrictions or allowances configured for user groups {user_groups}")

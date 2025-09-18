@@ -319,3 +319,163 @@ def test_restricted_field_argument():
         assert 'errors' in data
         assert data['errors'][0]['extensions']['code'] == 'FORBIDDEN'
 
+
+def test_user_with_multiple_groups():
+    users_config = Users(
+        users=[
+            User(
+                username="multi_group_user",
+                email="multi@company.com",
+                groups=["admin", "viewers"]
+            )
+        ]
+    )
+
+    groups_config = Groups(
+        groups=[
+            Group(
+                name="admin",
+                description="Full administrative access",
+                permissions=Permissions(
+                    mutations=MutationPolicy(
+                        effect=PolicyEffect.ALLOW,
+                        fields=[FieldRule(field_name="*")]
+                    ),
+                    queries=QueryPolicy(
+                        effect=PolicyEffect.ALLOW,
+                        fields=[FieldRule(field_name="*")]
+                    )
+                )
+            ),
+            Group(
+                name="viewers",
+                description="Read-only access",
+                permissions=Permissions(
+                    mutations=MutationPolicy(
+                        effect=PolicyEffect.DENY,
+                        fields=[FieldRule(field_name="*")]
+                    ),
+                    queries=QueryPolicy(
+                        effect=PolicyEffect.ALLOW,
+                        fields=[FieldRule(field_name="getUser")]
+                    )
+                )
+            )
+        ]
+    )
+
+    flask_app = get_flask_app(
+        upstream_url='http://localhost:4000/',
+        upstream_graphql_path='/graphql',
+        users_config=users_config,
+        groups_config=groups_config,
+    )
+    with flask_app.test_client() as client:
+        # Should be allowed due to admin group
+        mutation = 'mutation { launchPipelineExecution { id } }'
+        resp = client.post('/graphql', json={'query': mutation}, headers=get_test_headers('multi@company.com', 'multi_group_user'))
+        assert resp.status_code in (200, 502)
+        # Should be allowed due to viewers group
+        query = '{ getUser(name: "Ann") { id name } }'
+        resp = client.post('/graphql', json={'query': query}, headers=get_test_headers('multi@company.com', 'multi_group_user'))
+        assert resp.status_code in (200, 502)
+
+
+def test_multi_group_nested_query():
+    users_config = Users(
+        users=[
+            User(
+                username="nested_user",
+                email="nested@company.com",
+                groups=["engineering", "viewers"]
+            )
+        ]
+    )
+
+    groups_config = Groups(
+        groups=[
+            Group(
+                name="engineering",
+                description="Dev team",
+                permissions=Permissions(
+                    queries=QueryPolicy(
+                        effect=PolicyEffect.ALLOW,
+                        fields=[
+                            FieldRule(
+                                field_name="user",
+                                arguments=[
+                                    ArgumentRule(argument_name="name", values=["Ann Berry"])
+                                ],
+                                fields=[
+                                    FieldRule(field_name="profile", fields=[
+                                        FieldRule(field_name="address", fields=[
+                                            FieldRule(field_name="city")
+                                        ])
+                                    ])
+                                ]
+                            )
+                        ]
+                    )
+                )
+            ),
+            Group(
+                name="viewers",
+                description="Read-only",
+                permissions=Permissions(
+                    queries=QueryPolicy(
+                        effect=PolicyEffect.ALLOW,
+                        fields=[
+                            FieldRule(
+                                field_name="user",
+                                arguments=[
+                                    ArgumentRule(argument_name="name", values=["Ann"])
+                                ]
+                            )
+                        ]
+                    )
+                )
+            )
+        ]
+    )
+
+    flask_app = get_flask_app(
+        upstream_url='http://localhost:4000/',
+        upstream_graphql_path='/graphql',
+        users_config=users_config,
+        groups_config=groups_config,
+    )
+    with flask_app.test_client() as client:
+        # Allowed: matches engineering group, 3-layer nested
+        query = '''
+        query {
+            user(name: "Ann Berry") {
+            profile {
+                address {
+                city
+                }
+            }
+            }
+        }
+        '''
+        resp = client.post('/graphql', json={'query': query}, headers=get_test_headers('nested@company.com', 'nested_user'))
+        assert resp.status_code in (200, 502)
+
+        # Denied: argument not allowed in either group
+        query = '''
+        query {
+            user(name: "Eve") {
+            profile {
+                address {
+                city
+                }
+            }
+            }
+        }
+        '''
+        resp = client.post('/graphql', json={'query': query}, headers=get_test_headers('nested@company.com', 'nested_user'))
+        assert resp.status_code == 403
+        data = resp.get_json()
+        assert 'errors' in data
+        assert data['errors'][0]['extensions']['code'] == 'FORBIDDEN'
+
+
