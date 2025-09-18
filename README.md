@@ -28,6 +28,16 @@ docker run -p 8080:8080 \
   --upstream-url <UPSTREAM_GRAPHQL_URL> --users-config /app/users.yaml --groups-config /app/groups.yaml
 ```
 
+## Request Header Requirements
+These headers must be included in each request to identify the user:
+  - `X-Forwarded-Email`: The email address of the user
+  - `X-Forwarded-Preferred-Username`: (Optional) The preferred username of the user
+  - `X-Forwarded-User`: The unique identifier of the user
+  - `X-Forwarded-Access-Token`: The access token for the user
+
+### Identity Providers
+The proxy does not handle authentication itself. It relies on upstream identity providers (IdPs) to authenticate users and pass user information via HTTP headers.
+
 ## Configuration
 
 ### Users Config
