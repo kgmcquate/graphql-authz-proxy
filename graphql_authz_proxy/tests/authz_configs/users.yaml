@@ -4,4 +4,8 @@ users:
     username: "kgmcquate"
     groups:
       - "admin"
-      - "data-engineers"
+
+  - email: "bob@company.com"
+    username: "bob"
+    groups:
+      - "viewers"

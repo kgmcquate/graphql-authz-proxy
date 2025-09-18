@@ -1,9 +1,10 @@
-from graphql import parse, OperationDefinitionNode, OperationType
+from graphql import FragmentDefinitionNode, parse, OperationDefinitionNode, OperationType, DocumentNode, FieldDefinitionNode, InputValueDefinitionNode
 import requests
 from flask import Flask, request, jsonify, Response, current_app
-from graphql_authz_proxy.authz.utils import extract_user_from_headers
-from graphql_authz_proxy.authz.permissions import check_operation_permission
-from graphql_authz_proxy.models import UserConfig, UsersConfig, GroupsConfig
+# from gql_parsing import render_fields
+from graphql_authz_proxy.authz.utils import extract_user_from_headers, convert_fields_to_dict, render_fields
+from graphql_authz_proxy.authz.permissions import check_field_restrictions, check_field_allowances
+from graphql_authz_proxy.models import FieldAllowance, FieldNodeDict, FieldRestriction, User, User, Groups
 from urllib.parse import urljoin
 
 
@@ -43,7 +44,7 @@ def proxy_all(path):
         
 
 def health_check():
-    groups: GroupsConfig = current_app.config.get('groups_config')
+    groups: Groups = current_app.config.get('groups_config')
     config_status = {
         'groups_configured': len(groups.groups)
     }
@@ -69,10 +70,10 @@ def proxy_graphql():
         current_app.logger.info(f"Extracting user information from headers: {request.headers}")
         user_email, username, access_token = extract_user_from_headers(request.headers)
 
-        users_config: UsersConfig = current_app.config.get('users_config')
-        groups_config: GroupsConfig = current_app.config.get('groups_config')
+        users_config: User = current_app.config.get('users_config')
+        groups_config: Groups = current_app.config.get('groups_config')
 
-        user: UserConfig = users_config.get_user(username)
+        user: User = users_config.get_user(username)
 
         upstream_graphql_url: str = urljoin(current_app.config['upstream_url'], current_app.config['upstream_graphql_path'])
 
@@ -93,6 +94,23 @@ def proxy_graphql():
 
         user_groups = [groups_config.get_group(group_name) for group_name in user.groups]
 
+        query_field_restrictions: list[FieldRestriction] = []
+        mutation_field_restrictions: list[FieldRestriction] = []
+        query_field_allowances: list[FieldAllowance] = []
+        mutation_field_allowances: list[FieldAllowance] = []
+        for group in user_groups:
+            if group:
+                if group.permissions.queries:
+                    if group.permissions.queries.field_restrictions:
+                        query_field_restrictions.extend(group.permissions.queries.field_restrictions)
+                    if group.permissions.queries.field_allowances:
+                        query_field_allowances.extend(group.permissions.queries.field_allowances)
+                if group.permissions.mutations:
+                    if group.permissions.mutations.field_restrictions:
+                        mutation_field_restrictions.extend(group.permissions.mutations.field_restrictions)
+                    if group.permissions.mutations.field_allowances:
+                        mutation_field_allowances.extend(group.permissions.mutations.field_allowances)
+
         # Get the GraphQL query
         if request.is_json:
             data = request.get_json()
@@ -104,60 +122,62 @@ def proxy_graphql():
             variables = {}
             operation_name = ''
 
+        document: DocumentNode = parse(query)
 
-        document = parse(query)
+        fragments = {}
+        for definition in document.definitions:
+            if isinstance(definition, FragmentDefinitionNode):
+                fragments[definition.name.value] = definition
 
         for definition in document.definitions:
-            if not isinstance(definition, OperationDefinitionNode):
-                continue
-
-            if definition.operation == OperationType.MUTATION:
-                mutation_allowed, mutation_allowed_reason = check_operation_permission(
-                    user_groups,
-                    OperationType.MUTATION,
-                    definition.name,
-                    variables
+            if isinstance(definition, OperationDefinitionNode):
+                fields = render_fields(
+                    fragments=fragments,
+                    variable_values=variables,
+                    selection_set=definition.selection_set
                 )
 
+                field_dict: FieldNodeDict = convert_fields_to_dict(fields)
 
-                if not mutation_allowed:
-                    current_app.logger.warning(f"❌ Mutation '{operation_name}' denied for user {username} ({user_email})")
-                    current_app.logger.warning(f"❌ Reason: {mutation_allowed_reason}")
-                    return jsonify({
-                        'errors': [{
-                            'message': f'Access denied: {mutation_allowed_reason}',
-                            'extensions': {
-                                'code': 'FORBIDDEN',
-                                'user': username,
-                                'user_email': user_email,
-                                # 'user_groups': user_groups,
-                                'mutation': operation_name,
-                                'reason': mutation_allowed_reason
-                            }
-                        }]
-                    }), 403
-            
-            elif definition.operation == OperationType.QUERY:
-                query_allowed, query_allowed_reason = check_operation_permission(
-                    user_groups,
-                    OperationType.QUERY,
-                    definition.name,
-                    variables
-                )
+                # pprint.pprint(field_dict)
 
-                if not query_allowed:
+                if definition.operation == OperationType.MUTATION:
+                    field_restrictions = mutation_field_restrictions
+                    field_allowances = mutation_field_allowances
+                elif definition.operation == OperationType.QUERY:
+                    field_restrictions = query_field_restrictions
+                    field_allowances = query_field_allowances
+                else:
+                    continue
+                
+
+                if field_restrictions:
+                    is_allowed, reason, parent_fields = check_field_restrictions(
+                        field_nodes=field_dict,
+                        field_restrictions=field_restrictions
+                    )
+                elif field_allowances:
+                    is_allowed, reason, parent_fields = check_field_allowances(
+                        field_nodes=field_dict,
+                        field_allowances=field_allowances
+                    )
+                else:
+                    raise Exception(f"No field restrictions or allowances configured for user groups {user_groups}")
+
+                if not is_allowed:
                     current_app.logger.warning(f"❌ Query '{operation_name}' denied for user {username} ({user_email})")
-                    current_app.logger.warning(f"❌ Reason: {query_allowed_reason}")
+                    current_app.logger.warning(f"❌ Reason: {reason}")
                     return jsonify({
                         'errors': [{
-                            'message': f'Access denied: {query_allowed_reason}',
+                            'message': f'Access denied: {reason}',
                             'extensions': {
                                 'code': 'FORBIDDEN',
                                 'user': username,
                                 'user_email': user_email,
                                 # 'user_groups': user_groups,
                                 'query': operation_name,
-                                'reason': query_allowed_reason
+                                'reason': reason,
+                                'fields': parent_fields
                             }
                         }]
                     }), 403

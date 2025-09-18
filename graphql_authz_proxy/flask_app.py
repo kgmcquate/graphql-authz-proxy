@@ -1,14 +1,14 @@
 import sys
 from flask import Flask, app, logging
-from graphql_authz_proxy.models import UsersConfig, GroupsConfig
+from graphql_authz_proxy.models import Users, Groups
 from graphql_authz_proxy.routes import register_routes
 
 
 def get_flask_app(
     upstream_url: str,
     upstream_graphql_path: str,
-    users_config: UsersConfig,
-    groups_config: GroupsConfig,
+    users_config: Users,
+    groups_config: Groups,
     healthcheck_path: str,
     version: bool,
     debug: bool,

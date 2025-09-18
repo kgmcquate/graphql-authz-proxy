@@ -1,7 +1,7 @@
 import typer
 from graphql_authz_proxy.gunicorn_runner import run_with_gunicorn
 from graphql_authz_proxy.flask_app import get_flask_app
-from graphql_authz_proxy.models import UsersConfig, GroupsConfig
+from graphql_authz_proxy.models import User, Groups, Users
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -23,10 +23,10 @@ def start(
     debug: bool = typer.Option(False, help="Run Flask in debug mode", envvar="DEBUG"),
     version: bool = typer.Option(False, "--version", "-v", help="Show version and exit", envvar="VERSION"),
 ):
-    users_config = UsersConfig.parse_config(users_config_file)
+    users_config = Users.parse_config(users_config_file)
     logger.info(f"Users config loaded from {users_config_file}: {len(users_config.users)} users")
 
-    groups_config = GroupsConfig.parse_config(groups_config_file)
+    groups_config = Groups.parse_config(groups_config_file)
     logger.info(f"Groups config loaded from {groups_config_file}: {len(groups_config.groups)} groups")
 
     flask_app = get_flask_app(
