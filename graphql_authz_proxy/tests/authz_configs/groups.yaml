@@ -3,22 +3,26 @@ groups:
     description: "Full administrative access"
     permissions:
       mutations:
-        field_allowances:
-          - name: "*"
+        effect: "allow"
+        fields:
+          - field_name: "*"
 
       queries:
-        field_allowances:
-          - name: "*"
+        effect: "allow"
+        fields:
+          - field_name: "*"
 
   - name: "viewers"
     description: "Read-only access"
     permissions:
       mutations:
-        field_restrictions:
-          - name: "*"
+        effect: "deny"
+        fields:
+          - field_name: "*"
       queries:
-        field_restrictions:
-          - name: "getUser"
-            argument_restrictions:
-              - name: "name"
-                allowed_values: ["Ann"]
+        effect: "allow"
+        fields:
+          - field_name: "getUser"
+            arguments:
+              - argument_name: "name"
+                values: ["Ann"]

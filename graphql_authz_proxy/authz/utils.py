@@ -2,7 +2,7 @@ from typing import Any
 from jsonpath_ng import parse as jsonpath_parse
 import logging
 from graphql_authz_proxy.models import RenderedFields, FieldNodeDict
-from graphql import ConstValueNode, FieldNode, FragmentDefinitionNode, FragmentSpreadNode, InlineFragmentNode, SelectionSetNode, VariableNode, ast_to_dict
+from graphql import ConstValueNode, FieldNode, FragmentDefinitionNode, FragmentSpreadNode, InlineFragmentNode, ObjectValueNode, SelectionSetNode, VariableNode, ast_to_dict
 
 def get_value_of_jsonpath(data, path: str):
     """Get nested value from data using JSONPath notation"""
@@ -49,7 +49,6 @@ def convert_fields_to_dict(fields: RenderedFields) -> FieldNodeDict:
     result = {}
     for field_name, selection in fields.items():
         if isinstance(selection, list):
-            # List of FieldNode
             field_dicts = [ast_to_dict(field) for field in selection if isinstance(field, FieldNode)]
             if len(field_dicts) == 1:
                 field_dict = field_dicts[0]
@@ -58,7 +57,6 @@ def convert_fields_to_dict(fields: RenderedFields) -> FieldNodeDict:
                     'selection_set': None
                 }
             else:
-                # Multiple FieldNodes with the same name (due to aliases)
                 result[field_name] = []
                 for field_dict in field_dicts:
                     result[field_name].append({
@@ -66,10 +64,16 @@ def convert_fields_to_dict(fields: RenderedFields) -> FieldNodeDict:
                         'selection_set': None
                     })
         elif isinstance(selection, dict):
-            # Nested RenderedFields
+            field_node = selection.get('_field_node')
+            nested = selection.get('_nested')
+            if field_node:
+                field_dict = ast_to_dict(field_node)
+                arguments = {arg['name']['value']: arg['value'] for arg in field_dict.get('arguments', [])}
+            else:
+                arguments = {}
             result[field_name] = {
-                'arguments': {},
-                'selection_set': convert_fields_to_dict(selection)
+                'arguments': arguments,
+                'selection_set': convert_fields_to_dict(nested) if nested else None
             }
     return result
 
@@ -104,31 +108,32 @@ def render_fields(
                         selection.selection_set,
                     )
                 )
-
         elif isinstance(selection, FieldNode):
             name = selection.alias.value if selection.alias else selection.name.value
-            fields.setdefault(name, []).append(selection)
+            # Insert variable values into arguments
+            if selection.arguments:
+                for arg in selection.arguments:
+                    if isinstance(arg.value, VariableNode):
+                        variable_value = variable_values.get(arg.value.name.value)
+                        arg.value = variable_value
+                    elif isinstance(arg.value, ConstValueNode):
+                        arg.value = arg.value.value
+                    elif isinstance(arg.value, ObjectValueNode):
+                        arg.value = arg.value
+                        # ObjectValueNode
+                    else:
+                        raise ValueError(f"Unsupported argument value type: {type(arg.value)}: {arg.value.to_dict()}")
             if selection.selection_set:
-                fields[name] = render_fields(
-                    fragments,
-                    variable_values,
-                    selection.selection_set,
-                )
+                fields[name] = {
+                    '_field_node': selection,
+                    '_nested': render_fields(
+                        fragments,
+                        variable_values,
+                        selection.selection_set,
+                    )
+                }
+            else:
+                fields.setdefault(name, []).append(selection)
         else:
             raise TypeError(f"Unexpected selection node type: {type(selection)}")
-
-    # Insert variable values into arguments
-    for selection_set in fields.values():
-        if isinstance(selection_set, list):
-            for field in selection_set:
-                assert isinstance(field, FieldNode)
-                if field.arguments:
-                    for arg in field.arguments:
-                        if isinstance(arg.value, VariableNode):
-                            variable_value = variable_values[arg.value.name.value]
-                            arg.value = variable_value
-                        elif isinstance(arg.value, ConstValueNode):
-                            arg.value = arg.value.value
-
-                
     return fields

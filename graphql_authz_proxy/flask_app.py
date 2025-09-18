@@ -9,9 +9,9 @@ def get_flask_app(
     upstream_graphql_path: str,
     users_config: Users,
     groups_config: Groups,
-    healthcheck_path: str,
-    version: bool,
-    debug: bool,
+    healthcheck_path: str = '/health',
+    version: bool = False,
+    debug: bool = False,
 ):
 
     flask_app = Flask(__name__)

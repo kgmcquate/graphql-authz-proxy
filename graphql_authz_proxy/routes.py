@@ -4,7 +4,7 @@ from flask import Flask, request, jsonify, Response, current_app
 # from gql_parsing import render_fields
 from graphql_authz_proxy.authz.utils import extract_user_from_headers, convert_fields_to_dict, render_fields
 from graphql_authz_proxy.authz.permissions import check_field_restrictions, check_field_allowances
-from graphql_authz_proxy.models import FieldAllowance, FieldNodeDict, FieldRestriction, User, User, Groups
+from graphql_authz_proxy.models import FieldRule, FieldNodeDict, PolicyEffect, User, User, Groups
 from urllib.parse import urljoin
 
 
@@ -94,22 +94,22 @@ def proxy_graphql():
 
         user_groups = [groups_config.get_group(group_name) for group_name in user.groups]
 
-        query_field_restrictions: list[FieldRestriction] = []
-        mutation_field_restrictions: list[FieldRestriction] = []
-        query_field_allowances: list[FieldAllowance] = []
-        mutation_field_allowances: list[FieldAllowance] = []
+        query_field_restrictions: list[FieldRule] = []
+        mutation_field_restrictions: list[FieldRule] = []
+        query_field_allowances: list[FieldRule] = []
+        mutation_field_allowances: list[FieldRule] = []
         for group in user_groups:
             if group:
-                if group.permissions.queries:
-                    if group.permissions.queries.field_restrictions:
-                        query_field_restrictions.extend(group.permissions.queries.field_restrictions)
-                    if group.permissions.queries.field_allowances:
-                        query_field_allowances.extend(group.permissions.queries.field_allowances)
-                if group.permissions.mutations:
-                    if group.permissions.mutations.field_restrictions:
-                        mutation_field_restrictions.extend(group.permissions.mutations.field_restrictions)
-                    if group.permissions.mutations.field_allowances:
-                        mutation_field_allowances.extend(group.permissions.mutations.field_allowances)
+                if group.permissions.queries and group.permissions.queries.fields:
+                    if group.permissions.queries.effect == PolicyEffect.DENY:
+                        query_field_restrictions.extend(group.permissions.queries.fields)
+                    elif group.permissions.queries.effect == PolicyEffect.ALLOW:
+                        query_field_allowances.extend(group.permissions.queries.fields)
+                if group.permissions.mutations and group.permissions.mutations.fields:
+                    if group.permissions.mutations.effect == PolicyEffect.DENY:
+                        mutation_field_restrictions.extend(group.permissions.mutations.fields)
+                    elif group.permissions.mutations.effect == PolicyEffect.ALLOW:
+                        mutation_field_allowances.extend(group.permissions.mutations.fields)
 
         # Get the GraphQL query
         if request.is_json:
@@ -159,7 +159,7 @@ def proxy_graphql():
                 elif field_allowances:
                     is_allowed, reason, parent_fields = check_field_allowances(
                         field_nodes=field_dict,
-                        field_allowances=field_allowances
+                        field_rules=field_allowances
                     )
                 else:
                     raise Exception(f"No field restrictions or allowances configured for user groups {user_groups}")

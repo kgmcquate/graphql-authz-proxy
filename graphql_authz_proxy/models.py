@@ -38,73 +38,59 @@ class Users(_ConfigParser, BaseModel):
         return None
 
 
-# class ParameterRestriction(BaseModel):
-#     jsonpath: str
-#     allowed_values: Optional[List[str | int | float | bool]] = None
-#     forbidden_values: Optional[List[str | int | float | bool]] = None
-
-#     @model_validator(mode='after')
-#     def validate_values(self):
-#         if self.allowed_values is not None and self.forbidden_values is not None:
-#             raise ValueError("Cannot have both allowed_values and forbidden_values")
-#         return self
+class PolicyEffect(str, Enum):
+    ALLOW = "allow"
+    DENY = "deny"
 
 
-class ArgumentRestriction(BaseModel):
-    name: str
-    allowed_values: Optional[List[str | int | float | bool]] = None
-    forbidden_values: Optional[List[str | int | float | bool]] = None
-
-    @model_validator(mode='after')
-    def validate_values(self):
-        if self.allowed_values is not None and self.forbidden_values is not None:
-            raise ValueError("Cannot have both allowed_values and forbidden_values")
-        return self
+class ArgumentRule(BaseModel):
+    argument_name: str
+    values: Optional[List[str | int | float | bool]]
     
-class FieldRestriction(BaseModel):
-    name: str
-    argument_restrictions: Optional[List[ArgumentRestriction]] = None
-    field_restrictions: Optional[List['FieldRestriction']] = None
+
+class FieldRule(BaseModel):
+    field_name: str
+    description: Optional[str] = None
+    arguments: Optional[List[ArgumentRule]] = None
+    field_rules: Optional[List['FieldRule']] = None
 
     def is_leaf(self):
-        return not self.field_restrictions
+        return not self.field_rules
+
+
+class QueryPolicy(BaseModel):
+    effect: PolicyEffect
+    fields: Optional[List[FieldRule]] = None
+
+    def model_post_init(self, __context__=None) -> None:
+        if self.effect == PolicyEffect.DENY:
+            if self.fields is None:
+                # Deny all fields if no fields specified
+                self.fields = [
+                    FieldRule(field_name="*")
+                ]
     
 
-class FieldAllowance(BaseModel):
-    name: str
-    argument_restriction: Optional[List[ArgumentRestriction]] = None
-    field_allowances: Optional[List['FieldAllowance']] = None
-
-    def is_leaf(self):
-        return not self.field_allowances
+class MutationPolicy(QueryPolicy):
+    def model_post_init(self, __context__=None) -> None:
+        if self.effect == PolicyEffect.DENY:
+            if self.fields is None:
+                # Deny all fields if no fields specified
+                self.fields = [
+                    FieldRule(field_name="*")
+                ]
     
-class MutationPermissions(BaseModel):
-    field_allowances: Optional[List[FieldAllowance]] = None
-    field_restrictions: Optional[List[FieldRestriction]] = None
-
-    @model_validator(mode='after')
-    def validate_values(self):
-        if self.field_allowances is not None and self.field_restrictions is not None:
-            raise ValueError("Cannot have both field_allowances and field_restrictions")
-        elif not self.field_allowances and not self.field_restrictions:
-            raise ValueError("Must have either field_allowances or field_restrictions")
-        return self
-
-class QueryPermissions(BaseModel):
-    field_allowances: Optional[List[FieldAllowance]] = None
-    field_restrictions: Optional[List[FieldRestriction]] = None
-
-    @model_validator(mode='after')
-    def validate_values(self):
-        if self.field_allowances is not None and self.field_restrictions is not None:
-            raise ValueError("Cannot have both field_allowances and field_restrictions")
-        elif not self.field_allowances and not self.field_restrictions:
-            raise ValueError("Must have either field_allowances or field_restrictions")
-        return self
 
 class Permissions(BaseModel):
-    mutations: Optional[MutationPermissions] = None
-    queries: Optional[QueryPermissions] = None
+    mutations: Optional[MutationPolicy] = None
+    queries: Optional[QueryPolicy] = None
+
+    def model_post_init(self, __context__=None) -> None:
+        if not self.mutations:
+            self.mutations = MutationPolicy(effect=PolicyEffect.DENY)
+        if not self.queries:
+            self.queries = QueryPolicy(effect=PolicyEffect.DENY)
+
 
 class Group(BaseModel):
     name: str
@@ -122,10 +108,13 @@ class Groups(_ConfigParser, BaseModel):
                 return group
         return None
 
+
 type RenderedFields = Dict[str, List[FieldNode] | RenderedFields]
+
 
 class FieldNodeAttrs(TypedDict):
     arguments: Optional[Dict[str, Any]]
     selection_set: Optional["FieldNodeDict"]
-    
+
+
 type FieldNodeDict = Dict[str, FieldNodeAttrs]

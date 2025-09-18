@@ -2,7 +2,7 @@ from unittest.mock import patch, Mock
 import pytest
 from graphql_authz_proxy.flask_app import get_flask_app
 from pathlib import Path
-from graphql_authz_proxy.models import Users, Groups
+from graphql_authz_proxy.models import FieldRule, Group, MutationPolicy, Permissions, PolicyEffect, QueryPolicy, User, Users, Groups, ArgumentRule
 
 def get_test_headers(user_email, github_username, access_token=None):
     headers = {
@@ -141,10 +141,181 @@ def test_large_payload(client):
     response = client.post('/graphql', json={'query': large_query}, headers=get_test_headers('kgmcquate@gmail.com', 'kgmcquate'))
     assert response.status_code in (200, 502, 400, 413)
 
-# Integration: user with multiple groups
-# def test_multi_group_user(client):
-#     mutation = 'mutation { launchPipelineExecution { id } }'
-#     with patch('graphql_authz_proxy.models.Users.get_user', return_value=Mock(groups=['admin', 'data-engineers'])):
-#         response = client.post('/graphql', json={'query': mutation}, headers=get_test_headers('kgmcquate@gmail.com', 'kgmcquate'))
-#         assert response.status_code in (200, 502)
+
+def test_unknown_user():
+    users_config = Users(
+        users=[]
+    )
+
+    groups_config = Groups(
+        groups=[
+            Group(
+                name="viewers",
+                description="Read-only access",
+                permissions=Permissions(
+                    mutations=MutationPolicy(
+                        effect=PolicyEffect.DENY,
+                        fields=[
+                            FieldRule(name="*")
+                        ]
+                    ),
+                    queries=QueryPolicy(
+                        effect=PolicyEffect.ALLOW,
+                        fields=[
+                            FieldRule(name="getUser")
+                        ]
+                    )
+                )
+            )
+        ]
+    )
+
+    flask_app = get_flask_app(
+        upstream_url='http://localhost:4000/',
+        upstream_graphql_path='/graphql',
+        users_config=users_config,
+        groups_config=groups_config,
+        healthcheck_path='/health',
+        version=False,
+        debug=False,
+    )
+
+    with flask_app.test_client() as client:
+        query = """
+        query {
+          getUser(name: "Ann") {
+            id
+            name
+          }
+        }
+        """
+        resp = client.post('/graphql', json={'query': query}, headers=get_test_headers('kgmcquate@gmail.com', 'kgmcquate'))
+        assert resp.status_code == 403
+        data = resp.get_json()
+        assert 'errors' in data
+        assert data['errors'][0]['extensions']['code'] == 'FORBIDDEN'
+
+
+def test_unknown_user():
+    users_config = Users(
+        users=[]
+    )
+
+    groups_config = Groups(
+        groups=[
+            Group(
+                name="viewers",
+                description="Read-only access",
+                permissions=Permissions(
+                    mutations=MutationPolicy(
+                        effect=PolicyEffect.DENY,
+                        fields=[
+                            FieldRule(field_name="*")
+                        ]
+                    ),
+                    queries=QueryPolicy(
+                        effect=PolicyEffect.ALLOW,
+                        fields=[
+                            FieldRule(field_name="getUser")
+                        ]
+                    )
+                )
+            )
+        ]
+    )
+
+    flask_app = get_flask_app(
+        upstream_url='http://localhost:4000/',
+        upstream_graphql_path='/graphql',
+        users_config=users_config,
+        groups_config=groups_config
+    )
+
+    with flask_app.test_client() as client:
+        query = """
+        query {
+          getUser(name: "Ann") {
+            id
+            name
+          }
+        }
+        """
+        resp = client.post('/graphql', json={'query': query}, headers=get_test_headers('kgmcquate@gmail.com', 'kgmcquate'))
+        assert resp.status_code == 403
+        data = resp.get_json()
+        assert 'errors' in data
+        assert data['errors'][0]['extensions']['code'] == 'FORBIDDEN'
+
+
+def test_restricted_field_argument():
+    users_config = Users(
+        users=[
+            User(
+                username="test_user",
+                email="test_user@gmail.com",
+                groups=["viewers"]
+            )
+        ]
+    )
+
+    groups_config = Groups(
+        groups=[
+            Group(
+                name="viewers",
+                description="Read-only access",
+                permissions=Permissions(
+                    queries=QueryPolicy(
+                        effect=PolicyEffect.ALLOW,
+                        fields=[
+                            FieldRule(
+                                field_name="getUser",
+                                arguments=[
+                                    ArgumentRule(
+                                        argument_name="name",
+                                        values=["Alice", "Bob"]
+                                    )
+                                ]
+                            )
+                        ]
+                    )
+                )
+            )
+        ]
+    )
+
+    flask_app = get_flask_app(
+        upstream_url='http://localhost:4000/',
+        upstream_graphql_path='/graphql',
+        users_config=users_config,
+        groups_config=groups_config,
+    )
+    with flask_app.test_client() as client:
+        # Allowed argument value
+        query = """
+        query {
+          getUser(name: "Alice") {
+            id
+            name
+          }
+        }
+        """
+        resp = client.post('/graphql', json={'query': query}, headers=get_test_headers('test_user@gmail.com', 'test_user'))
+
+        assert resp.status_code in (200, 502)
+
+        # Disallowed argument value
+        query = """
+        query {
+          getUser(name: "Eve") {
+            id
+            name
+          }
+        }
+        """
+        resp = client.post('/graphql', json={'query': query}, headers=get_test_headers('test_user@gmail.com', 'test_user'))
+
+        assert resp.status_code == 403
+        data = resp.get_json()
+        assert 'errors' in data
+        assert data['errors'][0]['extensions']['code'] == 'FORBIDDEN'
 
