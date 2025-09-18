@@ -1,9 +1,7 @@
 import pytest
 from graphql_authz_proxy.flask_app import get_flask_app
-from graphql_authz_proxy.models import Users, User, Groups, Group, Rule, Permissions
+from graphql_authz_proxy.models import Users, User, Groups, Group, Permissions, PolicyEffect, MutationPolicy, QueryPolicy, FieldRule
 from testcontainers.compose import DockerCompose
-import requests
-import time
 import logging
 from pathlib import Path
 
@@ -43,27 +41,35 @@ def client_for_graphql_engine(graphql_api_container):
                 Group(
                     name="admin",
                     permissions=Permissions(
-                        queries=[
-                            Rule(
-                                operation_name="*"
-                            )
-                        ],
-                        mutations=[
-                            Rule(
-                                operation_name="*"
+                        queries=QueryPolicy(
+                            effect=PolicyEffect.ALLOW,
+                            fields=[
+                                FieldRule(
+                                    field_name="*"
+                                )
+                            ]
+                        ),
+                        mutations=MutationPolicy(
+                            effect=PolicyEffect.ALLOW,
+                            fields=[
+                            FieldRule(
+                                field_name="*"
                             )
                         ]
                     )
+                )
                 ),
                 Group(
                     name="viewer",
                     permissions=Permissions(
-                        queries=[
-                            Rule(
-                                operation_name="GetUserData"
-                            )
-                        ],
-                        mutations=[]
+                        queries=QueryPolicy(
+                            effect=PolicyEffect.ALLOW,
+                            fields=[
+                                FieldRule(
+                                    field_name="GetUserData"
+                                )
+                            ]
+                        ),
                     )
                 )
             ]

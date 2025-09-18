@@ -66,6 +66,19 @@ def health_check():
 
 def proxy_graphql():
     try:
+        # Get the GraphQL query
+        if request.is_json:
+            data = request.get_json()
+            query = data.get('query', '') if data else ''
+            variables = data.get('variables', {}) if data else {}
+            operation_name = data.get('operationName', '') if data else ''
+        else:
+            query = request.form.get('query', '')
+            variables = {}
+            operation_name = ''
+
+        document: DocumentNode = parse(query)
+
         # Extract user information
         current_app.logger.info(f"Extracting user information from headers: {request.headers}")
         user_email, username, access_token = extract_user_from_headers(request.headers)
@@ -110,19 +123,6 @@ def proxy_graphql():
                         mutation_field_restrictions.extend(group.permissions.mutations.fields)
                     elif group.permissions.mutations.effect == PolicyEffect.ALLOW:
                         mutation_field_allowances.extend(group.permissions.mutations.fields)
-
-        # Get the GraphQL query
-        if request.is_json:
-            data = request.get_json()
-            query = data.get('query', '') if data else ''
-            variables = data.get('variables', {}) if data else {}
-            operation_name = data.get('operationName', '') if data else ''
-        else:
-            query = request.form.get('query', '')
-            variables = {}
-            operation_name = ''
-
-        document: DocumentNode = parse(query)
 
         fragments = {}
         for definition in document.definitions:
