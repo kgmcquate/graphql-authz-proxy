@@ -1,11 +1,33 @@
-from typing import Any
-from jsonpath_ng import parse as jsonpath_parse
 import logging
-from graphql_authz_proxy.models import RenderedFields, FieldNodeDict
-from graphql import ConstValueNode, FieldNode, FragmentDefinitionNode, FragmentSpreadNode, InlineFragmentNode, ObjectValueNode, SelectionSetNode, VariableNode, ast_to_dict
+from typing import Any
 
-def get_value_of_jsonpath(data, path: str):
-    """Get nested value from data using JSONPath notation"""
+from graphql import (
+    ConstValueNode,
+    FieldNode,
+    FragmentDefinitionNode,
+    FragmentSpreadNode,
+    InlineFragmentNode,
+    ObjectValueNode,
+    SelectionSetNode,
+    VariableNode,
+    ast_to_dict,
+)
+from jsonpath_ng import parse as jsonpath_parse
+
+from graphql_authz_proxy.models import FieldNodeDict, RenderedFields
+
+
+def get_value_of_jsonpath(data: dict, path: str) -> Any:  # noqa: ANN401
+    """Get nested value from data using JSONPath notation.
+
+    Args:
+        data (dict): The data to search.
+        path (str): JSONPath string (without leading $).
+
+    Returns:
+        Any: The value(s) found, or None if not found.
+
+    """
     if not data or not path:
         return None
     try:
@@ -19,36 +41,40 @@ def get_value_of_jsonpath(data, path: str):
         else:
             return matches
     except Exception as e:
-        logging.debug(f"JSONPath error for path '{path}': {str(e)}")
+        logging.debug(f"JSONPath error for path '{path}': {e!s}")
         return None
 
 
 def extract_user_from_headers(headers: dict) -> tuple[str, str, str]:
-    user_email = headers.get('X-Forwarded-Email', '')
+    """Extract user email, username, and access token from HTTP headers.
+
+    Args:
+        headers (dict): HTTP request headers.
+
+    Returns:
+        tuple: (user_email, username, access_token)
+
+    """
+    user_email = headers.get("X-Forwarded-Email", "")
     assert isinstance(user_email, str), f"X-Forwarded-Email header is not a string: {user_email} ({type(user_email)})"
 
-    user_preferred_username = headers.get('X-Forwarded-Preferred-Username', '')
-    user = headers.get('X-Forwarded-User', '')
+    headers.get("X-Forwarded-Preferred-Username", "")
+    user = headers.get("X-Forwarded-User", "")
     assert isinstance(user, str), f"X-Forwarded-User header is not a string: {user} ({type(user)})"
-    access_token = headers.get('X-Forwarded-Access-Token', '')
+    access_token = headers.get("X-Forwarded-Access-Token", "")
     assert isinstance(access_token, str), f"X-Forwarded-Access-Token header is not a string: ({type(access_token)})"
     return user_email, user, access_token
 
 
-def convert_fields_to_dict(fields: RenderedFields) -> FieldNodeDict:
-    """
-    {'hero': {'first_name': [FieldNode at 29:39],
-          'friends': {'first_name': [FieldNode at 60:70]}}}
-    ->
-    {'hero': {
-        'first_name': {"arguments": {}, "selection_set": None},
-        'friends': {
-            'arguments': {},
-            'selection_set': {
-                'first_name': {"arguments": {}, "selection_set": None}
-            }
-        }
-    }}
+def convert_fields_to_dict(fields: RenderedFields) -> FieldNodeDict:  # noqa: C901, PLR0912
+    """Convert RenderedFields to a nested dict of field arguments and selection sets.
+
+    Args:
+        fields (RenderedFields): Parsed GraphQL fields.
+
+    Returns:
+        FieldNodeDict: Nested dict of field arguments and selection sets.
+
     """
     result = {}
     for field_name, selection in fields.items():
@@ -60,52 +86,61 @@ def convert_fields_to_dict(fields: RenderedFields) -> FieldNodeDict:
                         field_dict = ast_to_dict(field)
                     except TypeError:
                         # If argument value is a list, convert to tuple for hashing
-                        for arg in getattr(field, 'arguments', []):
-                            if hasattr(arg.value, 'values') and isinstance(arg.value.values, list):
+                        for arg in getattr(field, "arguments", []):
+                            if hasattr(arg.value, "values") and isinstance(arg.value.values, list):
                                 arg.value.values = tuple(arg.value.values)
                         field_dict = ast_to_dict(field)
                     field_dicts.append(field_dict)
             if len(field_dicts) == 1:
                 field_dict = field_dicts[0]
                 result[field_name] = {
-                    'arguments': {arg['name']['value']: arg['value'] for arg in field_dict.get('arguments', [])},
-                    'selection_set': None
+                    "arguments": {arg["name"]["value"]: arg["value"] for arg in field_dict.get("arguments", [])},
+                    "selection_set": None,
                 }
             else:
                 result[field_name] = []
                 for field_dict in field_dicts:
                     result[field_name].append({
-                        'arguments': {arg['name']['value']: arg['value'] for arg in field_dict.get('arguments', [])},
-                        'selection_set': None
+                        "arguments": {arg["name"]["value"]: arg["value"] for arg in field_dict.get("arguments", [])},
+                        "selection_set": None,
                     })
         elif isinstance(selection, dict):
-            field_node = selection.get('_field_node')
-            nested = selection.get('_nested')
+            field_node = selection.get("_field_node")
+            nested = selection.get("_nested")
             if field_node:
                 try:
                     field_dict = ast_to_dict(field_node)
                 except TypeError:
-                    for arg in getattr(field_node, 'arguments', []):
-                        if hasattr(arg.value, 'values') and isinstance(arg.value.values, list):
+                    for arg in getattr(field_node, "arguments", []):
+                        if hasattr(arg.value, "values") and isinstance(arg.value.values, list):
                             arg.value.values = tuple(arg.value.values)
                     field_dict = ast_to_dict(field_node)
-                arguments = {arg['name']['value']: arg['value'] for arg in field_dict.get('arguments', [])}
+                arguments = {arg["name"]["value"]: arg["value"] for arg in field_dict.get("arguments", [])}
             else:
                 arguments = {}
             result[field_name] = {
-                'arguments': arguments,
-                'selection_set': convert_fields_to_dict(nested) if nested else None
+                "arguments": arguments,
+                "selection_set": convert_fields_to_dict(nested) if nested else None,
             }
     return result
 
 
-def render_fields(
+def render_fields(  # noqa: C901, PLR0912
     fragments: dict[str, FragmentDefinitionNode],
     variable_values: dict[str, Any],
-    selection_set: SelectionSetNode
+    selection_set: SelectionSetNode,
 ) -> RenderedFields:
-    """Collect fields (internal implementation)."""
+    """Recursively collect fields from a GraphQL selection set, resolving fragments and variables.
 
+    Args:
+        fragments (dict): Fragment definitions by name.
+        variable_values (dict): Variable values for the query.
+        selection_set (SelectionSetNode): Selection set to process.
+
+    Returns:
+        RenderedFields: Nested dict of fields and subfields.
+
+    """
     fields: RenderedFields = {}
 
     for selection in selection_set.selections:
@@ -118,7 +153,7 @@ def render_fields(
                         fragments,
                         variable_values,
                         fragment.selection_set,
-                    )
+                    ),
                 )
         elif isinstance(selection, InlineFragmentNode):
             if selection.selection_set:
@@ -127,7 +162,7 @@ def render_fields(
                         fragments,
                         variable_values,
                         selection.selection_set,
-                    )
+                    ),
                 )
         elif isinstance(selection, FieldNode):
             name = selection.alias.value if selection.alias else selection.name.value
@@ -141,17 +176,16 @@ def render_fields(
                         arg.value = arg.value.value
                     elif isinstance(arg.value, ObjectValueNode):
                         arg.value = arg.value
-                        # ObjectValueNode
                     else:
-                        raise ValueError(f"Unsupported argument value type: {type(arg.value)}: {arg.value.to_dict()}")
+                        raise TypeError(f"Unsupported argument value type: {type(arg.value)}: {arg.value.to_dict()}")
             if selection.selection_set:
                 fields[name] = {
-                    '_field_node': selection,
-                    '_nested': render_fields(
+                    "_field_node": selection,
+                    "_nested": render_fields(
                         fragments,
                         variable_values,
                         selection.selection_set,
-                    )
+                    ),
                 }
             else:
                 fields.setdefault(name, []).append(selection)

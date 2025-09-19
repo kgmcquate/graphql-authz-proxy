@@ -1,9 +1,21 @@
-import pytest
-from graphql_authz_proxy.flask_app import get_flask_app
-from graphql_authz_proxy.models import Users, User, Groups, Group, Permissions, PolicyEffect, MutationPolicy, QueryPolicy, FieldRule
-from testcontainers.compose import DockerCompose
 import logging
 from pathlib import Path
+
+import pytest
+from testcontainers.compose import DockerCompose
+
+from graphql_authz_proxy.flask_app import get_flask_app
+from graphql_authz_proxy.models import (
+    FieldRule,
+    Group,
+    Groups,
+    MutationPolicy,
+    Permissions,
+    PolicyEffect,
+    QueryPolicy,
+    User,
+    Users,
+)
 
 logging.basicConfig(level=logging.INFO)
 
@@ -21,20 +33,20 @@ def graphql_api_container():
 def client_for_graphql_engine(graphql_api_container):
     flask_app = get_flask_app(
         upstream_url=graphql_api_container,
-        upstream_graphql_path='/v1/graphql',
+        upstream_graphql_path="/v1/graphql",
         users_config=Users(
             users=[
                 User(
                     username="adminuser",
                     email="adminuser@example.com",
-                    groups=["admin"]
+                    groups=["admin"],
                 ),
                 User(
                     username="vieweruser",
                     email="vieweruser@example.com",
-                    groups=["viewer"]
-                )
-            ]
+                    groups=["viewer"],
+                ),
+            ],
         ),
         groups_config=Groups(
             groups=[
@@ -45,19 +57,19 @@ def client_for_graphql_engine(graphql_api_container):
                             effect=PolicyEffect.ALLOW,
                             fields=[
                                 FieldRule(
-                                    field_name="*"
-                                )
-                            ]
+                                    field_name="*",
+                                ),
+                            ],
                         ),
                         mutations=MutationPolicy(
                             effect=PolicyEffect.ALLOW,
                             fields=[
                             FieldRule(
-                                field_name="*"
-                            )
-                        ]
-                    )
-                )
+                                field_name="*",
+                            ),
+                        ],
+                    ),
+                ),
                 ),
                 Group(
                     name="viewer",
@@ -66,15 +78,15 @@ def client_for_graphql_engine(graphql_api_container):
                             effect=PolicyEffect.ALLOW,
                             fields=[
                                 FieldRule(
-                                    field_name="GetUserData"
-                                )
-                            ]
+                                    field_name="GetUserData",
+                                ),
+                            ],
                         ),
-                    )
-                )
-            ]
+                    ),
+                ),
+            ],
         ),
-        healthcheck_path='/health',
+        healthcheck_path="/health",
         version=False,
         debug=False,
     )
@@ -83,15 +95,15 @@ def client_for_graphql_engine(graphql_api_container):
         yield client
 
 
-def test_graphql_query(graphql_api_container, client_for_graphql_engine):
-    query = '{ __typename }'
+def test_graphql_query(graphql_api_container, client_for_graphql_engine) -> None:
+    query = "{ __typename }"
     response = client_for_graphql_engine.post(
         f"{graphql_api_container}/v1/graphql",
         json={"query": query},
         headers={
             "X-Forwarded-Email": "adminuser@example.com",
-            "X-Forwarded-Preferred-Username": "adminuser"
-        }
+            "X-Forwarded-Preferred-Username": "adminuser",
+        },
     )
 
     assert response.status_code == 200
@@ -99,7 +111,7 @@ def test_graphql_query(graphql_api_container, client_for_graphql_engine):
     assert "data" in data
 
 
-def test_graphql_mutation(graphql_api_container, client_for_graphql_engine):
+def test_graphql_mutation(graphql_api_container, client_for_graphql_engine) -> None:
     # Hasura needs a table and permissions to allow mutations; this is a placeholder
     mutation = 'mutation { insert_test_table_one(objects: {name: "foo"}) { returning { id name } } }'
     response = client_for_graphql_engine.post(
@@ -107,8 +119,8 @@ def test_graphql_mutation(graphql_api_container, client_for_graphql_engine):
         json={"query": mutation},
         headers={
             "X-Forwarded-Email": "adminuser@example.com",
-            "X-Forwarded-Preferred-Username": "adminuser"
-        }
+            "X-Forwarded-Preferred-Username": "adminuser",
+        },
     )
     assert response.status_code == 200 #in (200, 400)
     data = response.get_json()
@@ -116,15 +128,15 @@ def test_graphql_mutation(graphql_api_container, client_for_graphql_engine):
     assert data["errors"][0]["message"] == "no mutations exist"
 
 
-def test_mutation_denied_for_viewer(graphql_api_container, client_for_graphql_engine):
+def test_mutation_denied_for_viewer(graphql_api_container, client_for_graphql_engine) -> None:
     query = 'mutation { insert_test_table_one(objects: {name: "foo"}) { returning { id name } } }'
     response = client_for_graphql_engine.post(
         f"{graphql_api_container}/v1/graphql",
         json={"query": query},
         headers={
             "X-Forwarded-Email": "vieweruser@example.com",
-            "X-Forwarded-Preferred-Username": "vieweruser"
-        }
+            "X-Forwarded-Preferred-Username": "vieweruser",
+        },
     )
     assert response.status_code == 403
     data = response.get_json()
@@ -132,33 +144,17 @@ def test_mutation_denied_for_viewer(graphql_api_container, client_for_graphql_en
     assert data["errors"][0]["message"].startswith("Access denied")
 
 
-def test_query_denied_for_viewer(graphql_api_container, client_for_graphql_engine):
-    query = 'query { test_table { id name } }'
+def test_query_denied_for_viewer(graphql_api_container, client_for_graphql_engine) -> None:
+    query = "query { test_table { id name } }"
     response = client_for_graphql_engine.post(
         f"{graphql_api_container}/v1/graphql",
         json={"query": query},
         headers={
             "X-Forwarded-Email": "vieweruser@example.com",
-            "X-Forwarded-Preferred-Username": "vieweruser"
-        }
+            "X-Forwarded-Preferred-Username": "vieweruser",
+        },
     )
     assert response.status_code == 403
     data = response.get_json()
     assert "errors" in data
     assert data["errors"][0]["message"].startswith("Access denied")
-
-
-# def test_query_allowed_for_viewer(graphql_api_container, client_for_graphql_engine):
-#     query = 'query GetUserData { id name }'
-#     response = client_for_graphql_engine.post(
-#         f"{graphql_api_container}/v1/graphql",
-#         json={"query": query},
-#         headers={
-#             "X-Forwarded-Email": "vieweruser@example.com",
-#             "X-Forwarded-Preferred-Username": "vieweruser"
-#         }
-#     )
-#     assert response.status_code == 200
-    # data = response.get_json()
-    # assert "errors" in data
-    # assert data["errors"][0]["message"].startswith("Access denied")

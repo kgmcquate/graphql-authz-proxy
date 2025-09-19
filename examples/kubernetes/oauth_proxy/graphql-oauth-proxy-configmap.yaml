@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: graphql-oauth-proxy-config
+  labels:
+    app: graphql-oauth-proxy
+# Example users.yaml and groups.yaml content
+# Replace with your actual config
+  
+data:
+  users.yaml: |
+    users:
+      - username: alice
+        email: alice@example.com
+        groups:
+          - admin
+      - username: bob
+        email: bob@example.com
+        groups:
+          - viewer
+  groups.yaml: |
+    groups:
+      - name: admin
+        permissions:
+          queries:
+            effect: allow
+            fields:
+              - field_name: "*"
+          mutations:
+            effect: allow
+            fields:
+              - field_name: "*"
+      - name: viewer
+        permissions:
+          queries:
+            effect: allow
+            fields:
+              - field_name: "*"
+          mutations:
+            effect: deny
+            fields:
+              - field_name: "*"

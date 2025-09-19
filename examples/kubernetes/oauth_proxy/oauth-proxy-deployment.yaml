@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oauth-proxy
+  labels:
+    app: oauth-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oauth-proxy
+  template:
+    metadata:
+      labels:
+        app: oauth-proxy
+    spec:
+      containers:
+        - name: oauth-proxy
+          image: quay.io/oauth2-proxy/oauth2-proxy:v7.5.1
+          ports:
+            - containerPort: 4180
+          env:
+            - name: OAUTH2_PROXY_CLIENT_ID
+              value: "<client-id>"
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              value: "<client-secret>"
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              value: "<cookie-secret>"
+            - name: OAUTH2_PROXY_PROVIDER
+              value: "github"
+            - name: OAUTH2_PROXY_EMAIL_DOMAINS
+              value: "*"
+            - name: OAUTH2_PROXY_UPSTREAMS
+              value: "http://graphql-oauth-proxy:5000/"
+          args:
+            - --http-address=0.0.0.0:4180

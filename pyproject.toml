@@ -20,8 +20,21 @@ dependencies = [
 dev = [
     "psycopg2-binary>=2.9.10",
     "pytest>=8.4.2",
+    "ruff>=0.13.1",
     "testcontainers>=4.13.0",
 ]
 
 [project.scripts]
 gqlproxy = "graphql_authz_proxy.cli:typer_app"
+
+[tool.ruff]
+line-length = 120
+exclude = [".venv", "__pycache__", "build", "dist", "tests", "identity_providers"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "C90", "D", "N", "S", "ANN", "COM", "T20", "Q", "RSE", "SIM", "ARG", "PL", "TRY", "ERA", "RUF"]
+ignore = ["PLR2004", "S101", "COM812", "D205", "D211", "D213", "TRY401", "TRY003", "TRY301"]
+
+[tool.ruff.format]
+quote-style = "double"
+skip-magic-trailing-comma = true

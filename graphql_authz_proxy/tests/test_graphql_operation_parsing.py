@@ -1,6 +1,6 @@
-import pytest
-from graphql import parse, ast_to_dict
-from graphql_authz_proxy.authz.utils import render_fields, convert_fields_to_dict
+from graphql import parse
+
+from graphql_authz_proxy.authz.utils import convert_fields_to_dict, render_fields
 
 SIMPLE_QUERY = """
 query HeroQuery($heroName: String!) {
@@ -22,7 +22,7 @@ query GetUser($name: String!) {
 }
 """
 
-def test_render_fields_simple():
+def test_render_fields_simple() -> None:
     document = parse(SIMPLE_QUERY)
     operation = document.definitions[0]
     fragments = {}
@@ -35,7 +35,7 @@ def test_render_fields_simple():
     friends_nested = hero_nested["friends"]["_nested"]
     assert "first_name" in friends_nested
 
-def test_render_fields_with_arguments():
+def test_render_fields_with_arguments() -> None:
     document = parse("""
     query GetUser($name: String!) {
     getUser(name: $name) {
@@ -48,19 +48,19 @@ def test_render_fields_with_arguments():
     variable_values = {"name": "Ann"}
 
     desired_output = {
-        'getUser': {
-            'arguments': {'name': 'Ann'},
-            'selection_set': {
-                'id': {
-                    'arguments': {},
-                    'selection_set': None
+        "getUser": {
+            "arguments": {"name": "Ann"},
+            "selection_set": {
+                "id": {
+                    "arguments": {},
+                    "selection_set": None,
                 },
-                'name': {
-                    'arguments': {},
-                    'selection_set': None
-                }
-            }
-        }
+                "name": {
+                    "arguments": {},
+                    "selection_set": None,
+                },
+            },
+        },
     }
     operation = document.definitions[0]
     fragments = {}
@@ -69,7 +69,7 @@ def test_render_fields_with_arguments():
     assert fields_dict == desired_output
 
 
-def test_render_fields_with_sub_field_arguments():
+def test_render_fields_with_sub_field_arguments() -> None:
     document = parse("""
     query GetUser($first_name: String!) {
         getUser {
@@ -78,15 +78,15 @@ def test_render_fields_with_sub_field_arguments():
     }
     """)
     desired_output = {
-        'getUser': {
-            'arguments': {},
-            'selection_set': {
-                'name': {
-                    'arguments': {'first_name': 'Ann'},
-                    'selection_set': None
-                }
-            }
-        }
+        "getUser": {
+            "arguments": {},
+            "selection_set": {
+                "name": {
+                    "arguments": {"first_name": "Ann"},
+                    "selection_set": None,
+                },
+            },
+        },
     }
     operation = document.definitions[0]
     fragments = {}
@@ -96,7 +96,7 @@ def test_render_fields_with_sub_field_arguments():
     assert fields_dict == desired_output
 
 
-def test_convert_fields_to_dict_with_arguments():
+def test_convert_fields_to_dict_with_arguments() -> None:
     document = parse(ARG_QUERY)
     operation = document.definitions[0]
     fragments = {}

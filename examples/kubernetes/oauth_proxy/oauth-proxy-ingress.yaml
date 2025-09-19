@@ -1,0 +1,16 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: oauth-proxy
+spec:
+  rules:
+    - host: <your-domain>
+      http:
+        paths:
+          - path: /oauth/
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: oauth-proxy
+                port:
+                  number: 4180

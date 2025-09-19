@@ -1,8 +1,20 @@
-from typing import Optional, Tuple
+
 from graphql_authz_proxy.identity_providers.base import IdentityProvider
 
+
 class AzureIdentityProvider(IdentityProvider):
-    def validate_token(self, token: str, claimed_username: Optional[str], claimed_email: Optional[str]) -> Tuple[bool, Optional[str]]:
+    def validate_token(self, token: str, claimed_username: str | None, claimed_email: str | None) -> tuple[bool, str | None]:
+        """Validate an Azure access token and check claimed identity.
+
+        Args:
+            token (str): Azure access token (JWT).
+            claimed_username (str | None): Username claimed by the user.
+            claimed_email (str | None): Email claimed by the user.
+
+        Returns:
+            tuple: (is_valid, error_reason_if_any)
+
+        """
         try:
             import jwt
             decoded = jwt.decode(token, options={"verify_signature": False})
@@ -14,4 +26,4 @@ class AzureIdentityProvider(IdentityProvider):
                 return False, f"Email mismatch: header={claimed_email} azure={az_email}"
             return True, None
         except Exception as e:
-            return False, f"Azure token invalid: {str(e)}"
+            return False, f"Azure token invalid: {e!s}"

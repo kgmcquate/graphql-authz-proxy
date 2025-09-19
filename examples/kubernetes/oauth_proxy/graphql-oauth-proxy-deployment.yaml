@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: graphql-oauth-proxy
+  labels:
+    app: graphql-oauth-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: graphql-oauth-proxy
+  template:
+    metadata:
+      labels:
+        app: graphql-oauth-proxy
+    spec:
+      containers:
+        - name: graphql-oauth-proxy
+          image: kgmcquate/graphql-authz-proxy:latest
+          ports:
+            - containerPort: 5000
+          env:
+            - name: UPSTREAM_URL
+              value: "http://upstream-graphql:8080/"
+            - name: UPSTREAM_GRAPHQL_PATH
+              value: "/graphql"
+            - name: USERS_CONFIG_FILE
+              value: "/etc/config/users.yaml"
+            - name: GROUPS_CONFIG_FILE
+              value: "/etc/config/groups.yaml"
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/config
+      volumes:
+        - name: config-volume
+          configMap:
+            name: graphql-oauth-proxy-config
