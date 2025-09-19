@@ -1,10 +1,9 @@
-from graphql import FragmentDefinitionNode, parse, OperationDefinitionNode, OperationType, DocumentNode, FieldDefinitionNode, InputValueDefinitionNode
+from graphql import FragmentDefinitionNode, parse, OperationDefinitionNode, OperationType, DocumentNode
 import requests
 from flask import Flask, request, jsonify, Response, current_app
-# from gql_parsing import render_fields
 from graphql_authz_proxy.authz.utils import extract_user_from_headers, convert_fields_to_dict, render_fields
 from graphql_authz_proxy.authz.permissions import check_field_restrictions, check_field_allowances
-from graphql_authz_proxy.models import FieldRule, FieldNodeDict, PolicyEffect, User, User, Groups
+from graphql_authz_proxy.models import FieldRule, FieldNodeDict, PolicyEffect, User, User, Groups, Users
 from urllib.parse import urljoin
 
 
@@ -64,6 +63,20 @@ def health_check():
     })
 
 
+
+
+from graphql_authz_proxy.identity_providers.github import GitHubIdentityProvider
+from graphql_authz_proxy.identity_providers.azure import AzureIdentityProvider
+from graphql_authz_proxy.identity_providers.custom import CustomIdentityProvider
+
+def get_identity_provider(idp_name: str):
+    if idp_name == "github":
+        return GitHubIdentityProvider()
+    elif idp_name == "azure":
+        return AzureIdentityProvider()
+    else:
+        return CustomIdentityProvider()
+
 def proxy_graphql():
     try:
         # Get the GraphQL query
@@ -83,11 +96,28 @@ def proxy_graphql():
         current_app.logger.info(f"Extracting user information from headers: {request.headers}")
         user_email, username, access_token = extract_user_from_headers(request.headers)
 
-        users_config: User = current_app.config.get('users_config')
+        users_config: Users = current_app.config.get('users_config')
         groups_config: Groups = current_app.config.get('groups_config')
+        idp_name: str = current_app.config.get('idp', 'github')
+        validate_token: bool = current_app.config.get('validate_token', False)
+        
+        # Validate token if present
+        if validate_token and access_token:
+            identity_provider = get_identity_provider(idp_name)
+            valid, reason = identity_provider.validate_token(access_token, username, user_email)
+            if not valid:
+                return jsonify({
+                    'errors': [{
+                        'message': f'Authentication failed: {reason}',
+                        'extensions': {
+                            'code': 'UNAUTHORIZED',
+                            'user': username,
+                            'user_email': user_email
+                        }
+                    }]
+                }), 401
 
         user: User = users_config.get_user(username)
-
         upstream_graphql_url: str = urljoin(current_app.config['upstream_url'], current_app.config['upstream_graphql_path'])
 
         if user is None:
@@ -139,8 +169,6 @@ def proxy_graphql():
 
                 field_dict: FieldNodeDict = convert_fields_to_dict(fields)
 
-                # pprint.pprint(field_dict)
-
                 if definition.operation == OperationType.MUTATION:
                     field_restrictions = mutation_field_restrictions
                     field_allowances = mutation_field_allowances
@@ -149,7 +177,7 @@ def proxy_graphql():
                     field_allowances = query_field_allowances
                 else:
                     continue
-                
+
                 # Explicit allowances override denials
                 if field_allowances:
                     is_allowed, reason, parent_fields = check_field_allowances(
@@ -174,7 +202,6 @@ def proxy_graphql():
                                 'code': 'FORBIDDEN',
                                 'user': username,
                                 'user_email': user_email,
-                                # 'user_groups': user_groups,
                                 'query': operation_name,
                                 'reason': reason,
                                 'fields': parent_fields
@@ -184,8 +211,6 @@ def proxy_graphql():
 
         # Forward the request to Dagster webserver
         headers = dict(request.headers)
-        # headers.pop('Host', None)
-        # headers.pop('Content-Length', None)
         response = requests.post(
             upstream_graphql_url,
             data=request.get_data(),
@@ -208,9 +233,7 @@ def proxy_graphql():
 
 
 def register_routes(flask_app: Flask, graphql_path: str = "/graphql", healthcheck_path: str = "/gqlproxy/health"):
-
     flask_app.route('/', defaults={'path': ''})(proxy_all)
     flask_app.route('/<path:path>')(proxy_all)
-
     flask_app.route(healthcheck_path, methods=['GET'])(health_check)
     flask_app.route(graphql_path, methods=['POST'])(proxy_graphql)

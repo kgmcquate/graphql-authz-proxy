@@ -16,6 +16,8 @@ def start(
     upstream_graphql_path: str = typer.Option("/graphql", help="Path to the GraphQL endpoint on the upstream server", envvar="UPSTREAM_GRAPHQL_PATH"),
     users_config_file: str = typer.Option("users.yaml", help="Users config file name", envvar="USERS_CONFIG_FILE"),
     groups_config_file: str = typer.Option("groups.yaml", help="Groups config file name", envvar="GROUPS_CONFIG_FILE"),
+    validate_token: bool = typer.Option(False, help="Enable token validation with the identity provider", envvar="VALIDATE_TOKEN"),
+    idp: str = typer.Option("github", help="Identity provider for token validation (github, azure, custom)", envvar="IDP"),
     host: str = typer.Option("127.0.0.1", help="Host to run the Flask app on", envvar="HOST"),
     port: int = typer.Option(5000, help="Port to run the Flask app on", envvar="PORT"),
     workers: int = typer.Option(2, help="Number of Gunicorn workers to use", envvar="WORKERS"),
@@ -36,7 +38,9 @@ def start(
         groups_config=groups_config,
         healthcheck_path=healthcheck_path,
         debug=debug,
-        version=version
+        version=version,
+        validate_token=validate_token,
+        idp=idp
     )
 
     run_with_gunicorn(flask_app, host=host, port=port, workers=workers)

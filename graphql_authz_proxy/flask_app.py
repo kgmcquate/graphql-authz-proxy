@@ -11,6 +11,8 @@ def get_flask_app(
     groups_config: Groups,
     healthcheck_path: str = '/health',
     version: bool = False,
+    validate_token: bool = False,
+    idp: str = 'github',
     debug: bool = False,
 ):
 
@@ -23,6 +25,8 @@ def get_flask_app(
     flask_app.config['groups_config'] = groups_config
     flask_app.config['upstream_url'] = upstream_url
     flask_app.config['upstream_graphql_path'] = upstream_graphql_path
+    flask_app.config['validate_token'] = validate_token
+    flask_app.config['idp'] = idp
 
     if version:
         sys.exit(0)
