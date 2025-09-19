@@ -1,0 +1,6 @@
+[semantic_release]
+version_variable = graphql_authz_proxy/__init__.py:__version__
+branch = main
+upload_to_pypi = false
+changelog_file = CHANGELOG.md
+build_command = "python setup.py sdist bdist_wheel"
