@@ -23,17 +23,26 @@ class User(BaseModel):
 
 class Users(_ConfigParser, BaseModel):
     users: List[User]
+    _user_lookup_cache: Dict[str, User] = {}
+    _user_email_lookup_cache: Dict[str, User] = {}
 
-    # @lru_cache(maxsize=128)
     def get_user(self, username: str) -> Optional[User]:
+        if username in self._user_lookup_cache:
+            return self._user_lookup_cache[username]
+
         for user in self.users:
             if user.username == username.strip():
+                self._user_lookup_cache[username] = user
                 return user
         return None
     
     def get_user_by_email(self, email: str) -> Optional[User]:
+        if email in self._user_email_lookup_cache:
+            return self._user_email_lookup_cache[email]
+
         for user in self.users:
             if user.email == email.strip():
+                self._user_email_lookup_cache[email] = user
                 return user
         return None
 
@@ -100,11 +109,14 @@ class Group(BaseModel):
 
 class Groups(_ConfigParser, BaseModel):
     groups: List[Group]
-
-    # @lru_cache(maxsize=128)
+    _group_lookup_cache: Dict[str, Group] = {}
     def get_group(self, group_name: str) -> Optional[Group]:
+        if group_name in self._group_lookup_cache:
+            return self._group_lookup_cache[group_name]
+
         for group in self.groups:
             if group.name == group_name.strip():
+                self._group_lookup_cache[group_name] = group
                 return group
         return None
 
