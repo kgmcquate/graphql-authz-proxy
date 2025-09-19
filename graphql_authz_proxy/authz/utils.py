@@ -25,9 +25,13 @@ def get_value_of_jsonpath(data, path: str):
 
 def extract_user_from_headers(headers: dict) -> tuple[str, str, str]:
     user_email = headers.get('X-Forwarded-Email', '')
+    assert isinstance(user_email, str), f"X-Forwarded-Email header is not a string: {user_email} ({type(user_email)})"
+
     user_preferred_username = headers.get('X-Forwarded-Preferred-Username', '')
     user = headers.get('X-Forwarded-User', '')
+    assert isinstance(user, str), f"X-Forwarded-User header is not a string: {user} ({type(user)})"
     access_token = headers.get('X-Forwarded-Access-Token', '')
+    assert isinstance(access_token, str), f"X-Forwarded-Access-Token header is not a string: ({type(access_token)})"
     return user_email, user, access_token
 
 
