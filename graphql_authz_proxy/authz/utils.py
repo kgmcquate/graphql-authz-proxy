@@ -53,7 +53,18 @@ def convert_fields_to_dict(fields: RenderedFields) -> FieldNodeDict:
     result = {}
     for field_name, selection in fields.items():
         if isinstance(selection, list):
-            field_dicts = [ast_to_dict(field) for field in selection if isinstance(field, FieldNode)]
+            field_dicts = []
+            for field in selection:
+                if isinstance(field, FieldNode):
+                    try:
+                        field_dict = ast_to_dict(field)
+                    except TypeError:
+                        # If argument value is a list, convert to tuple for hashing
+                        for arg in getattr(field, 'arguments', []):
+                            if hasattr(arg.value, 'values') and isinstance(arg.value.values, list):
+                                arg.value.values = tuple(arg.value.values)
+                        field_dict = ast_to_dict(field)
+                    field_dicts.append(field_dict)
             if len(field_dicts) == 1:
                 field_dict = field_dicts[0]
                 result[field_name] = {
@@ -71,7 +82,13 @@ def convert_fields_to_dict(fields: RenderedFields) -> FieldNodeDict:
             field_node = selection.get('_field_node')
             nested = selection.get('_nested')
             if field_node:
-                field_dict = ast_to_dict(field_node)
+                try:
+                    field_dict = ast_to_dict(field_node)
+                except TypeError:
+                    for arg in getattr(field_node, 'arguments', []):
+                        if hasattr(arg.value, 'values') and isinstance(arg.value.values, list):
+                            arg.value.values = tuple(arg.value.values)
+                    field_dict = ast_to_dict(field_node)
                 arguments = {arg['name']['value']: arg['value'] for arg in field_dict.get('arguments', [])}
             else:
                 arguments = {}

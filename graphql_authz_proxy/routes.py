@@ -224,6 +224,7 @@ def proxy_graphql():
         )
     except Exception as e:
         current_app.logger.error(f"Error processing request: {str(e)}")
+        raise e
         return jsonify({
             'errors': [{
                 'message': 'Internal server error',

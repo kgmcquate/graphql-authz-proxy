@@ -479,3 +479,46 @@ def test_multi_group_nested_query():
         assert data['errors'][0]['extensions']['code'] == 'FORBIDDEN'
 
 
+def test_dagster_request(client2):
+    query = """query AssetsFreshnessInfoQuery($assetKeys: [AssetKeyInput!]!) {\n  assetNodes(assetKeys: $assetKeys) {\n    id\n    assetKey {\n      path\n      __typename\n    }\n    freshnessInfo {\n      ...AssetNodeLiveFreshnessInfoFragment\n      __typename\n    }\n    __typename\n  }\n}\n\nfragment AssetNodeLiveFreshnessInfoFragment on AssetFreshnessInfo {\n  currentMinutesLate\n  __typename\n}"""
+
+    response = client2.post('/', json={'query': query, 'variables': {'assetKeys': [{'path': ['my_asset']}]}}, headers=get_test_headers('kgmcquate@gmail.com', 'kgmcquate'))
+    assert response.status_code in (200, 502)
+    data = response.get_json()
+    assert 'data' in data or 'result' in data.get('data', {})
+
+
+def test_variable_object_argument(client):
+        query = '''
+        query GetUser($input: UserInput!) {
+            getUser(input: $input) {
+                id
+                name
+                details {
+                    age
+                    address {
+                        city
+                        zip
+                    }
+                }
+            }
+        }
+        '''
+        variables = {
+                "input": {
+                        "name": "Ann",
+                        "details": {
+                                "age": 30,
+                                "address": {
+                                        "city": "NYC",
+                                        "zip": "10001"
+                                }
+                        }
+                }
+        }
+        
+        response = client.post('/graphql', json={'query': query, 'variables': variables}, headers=get_test_headers('kgmcquate@gmail.com', 'kgmcquate'))
+        assert response.status_code in (200, 502)
+        data = response.get_json()
+        assert 'data' in data or 'result' in data.get('data', {})
+

@@ -22,11 +22,6 @@ jobs:
       - name: Install semantic-release
         run: pip install python-semantic-release
 
-    #   - name: Run semantic-release (dry run)
-    #     run: semantic-release publish --noop
-    #     env:
-    #       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Run semantic-release (actual)
         if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
         run: semantic-release publish
