@@ -109,3 +109,25 @@ def test_convert_fields_to_dict_with_arguments() -> None:
     assert field_dict["getUser"]["selection_set"] is not None
     assert "id" in field_dict["getUser"]["selection_set"]
     assert "name" in field_dict["getUser"]["selection_set"]
+
+
+def test_array_variables() -> None:
+    query = """
+    query GetUser($names: [String!]!) {
+        getUser(names: $names) {
+            id
+            name
+        }
+    }"""
+    document = parse(query)
+    operation = document.definitions[0]
+    fragments = {}
+    variable_values = {"names": ["Ann", "Bob", "Sue"]}
+    fields = render_fields(fragments, variable_values, operation.selection_set)
+    field_dict = convert_fields_to_dict(fields)
+    assert "getUser" in field_dict
+    assert "arguments" in field_dict["getUser"]
+    assert field_dict["getUser"]["arguments"]["names"] == ["Ann", "Bob", "Sue"]
+    assert field_dict["getUser"]["selection_set"] is not None
+    assert "id" in field_dict["getUser"]["selection_set"]
+    assert "name" in field_dict["getUser"]["selection_set"]

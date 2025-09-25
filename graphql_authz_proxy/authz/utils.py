@@ -7,8 +7,8 @@ from graphql import (
     FragmentDefinitionNode,
     FragmentSpreadNode,
     InlineFragmentNode,
-    ObjectValueNode,
     SelectionSetNode,
+    ValueNode,
     VariableNode,
     ast_to_dict,
 )
@@ -174,8 +174,10 @@ def render_fields(  # noqa: C901, PLR0912
                         arg.value = variable_value
                     elif isinstance(arg.value, ConstValueNode):
                         arg.value = arg.value.value
-                    elif isinstance(arg.value, ObjectValueNode):
+                    elif isinstance(arg.value, ValueNode):
                         arg.value = arg.value
+                    # elif isinstance(arg.value, ObjectValueNode):
+                    #     arg.value = arg.value
                     else:
                         raise TypeError(f"Unsupported argument value type: {type(arg.value)}: {arg.value.to_dict()}")
             if selection.selection_set:
