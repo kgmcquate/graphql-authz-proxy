@@ -23,11 +23,13 @@ jobs:
           uv sync --dev
         working-directory: ./graphql_authz_proxy
       - name: Run tests with coverage
-        run: uv run pytest --cov=. --cov-report=xml --cov-report=term tests/
+        run: uv run pytest --cov=. --cov-report=json --cov-report=term tests/
         working-directory: ./graphql_authz_proxy
-      - name: Generate coverage badge from coverage.xml
+      - name: Generate coverage badge from coverage.json
         run: |
-          uv run coverage-badge -o coverage-badge.svg -f coverage.xml
+          cat coverage.json | jq .totals.percent_covered_display -r
+          COVERAGE=$(cat coverage.json | jq .totals.percent_covered_display -r)
+          uv run pybadges --left-text="coverage" --right-text="${COVERAGE}%" --right-color="green" > coverage-badge.svg
         working-directory: ./graphql_authz_proxy
       - name: Commit coverage badge
         run: |  
