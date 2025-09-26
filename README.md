@@ -1,5 +1,9 @@
 # graphql-authz-proxy
 
+
+![Coverage](./graphql_authz_proxy/coverage-badge.svg)
+
+
 Proxy to enforce authorization rules on GraphQL APIs.
 
 ## Features

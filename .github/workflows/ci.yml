@@ -21,6 +21,28 @@ jobs:
       - name: Install dependencies with uv
         run: |
           uv sync --dev
-          uv run pytest tests/
         working-directory: ./graphql_authz_proxy
+      - name: Run tests with coverage
+        run: uv run pytest --cov=. --cov-report=xml --cov-report=term tests/
+        working-directory: ./graphql_authz_proxy
+      - name: Install pybadges
+        run: pip install pybadges
+      - name: Generate coverage badge
+        run: |
+          COVERAGE=$(uv run pytest --cov=. --cov-report=term-missing tests/ | grep 'TOTAL' | awk '{print $4}' | sed 's/%//')
+          pybadges --left-text="coverage" --right-text="${COVERAGE}%" --right-color="green" > ./graphql_authz_proxy/coverage-badge.svg
+        working-directory: ./graphql_authz_proxy
+      - name: Commit coverage badge
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+          git add coverage-badge.svg
+          git commit -m "Update coverage badge" || echo "No changes to commit"
+          git push
+        working-directory: ./graphql_authz_proxy
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report
+          path: ./graphql_authz_proxy/coverage.xml
 
