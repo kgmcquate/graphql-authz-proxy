@@ -27,15 +27,15 @@ jobs:
         working-directory: ./graphql_authz_proxy
       - name: Generate coverage badge from coverage.json
         run: |
-          cat coverage.json | jq .totals.percent_covered_display -r
           COVERAGE=$(cat coverage.json | jq .totals.percent_covered_display -r)
-          uv run pybadges --left-text="coverage" --right-text="${COVERAGE}%" --right-color="green" > coverage-badge.svg
+          rm coverage.svg || true
+          uv run anybadge --value=${COVERAGE} --file=coverage.svg coverage
         working-directory: ./graphql_authz_proxy
       - name: Commit coverage badge
         run: |  
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
-          git add coverage-badge.svg
+          git add coverage.svg
           git commit -m "Update coverage badge" || echo "No changes to commit"
           git push
         working-directory: ./graphql_authz_proxy
