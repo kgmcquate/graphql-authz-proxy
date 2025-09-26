@@ -1,3 +1,4 @@
+import json
 from graphql import parse
 
 from graphql_authz_proxy.authz.utils import convert_fields_to_dict, render_fields

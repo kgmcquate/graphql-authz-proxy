@@ -7,11 +7,13 @@ from graphql import (
     FragmentDefinitionNode,
     FragmentSpreadNode,
     InlineFragmentNode,
+    Node,
+    OperationType,
     SelectionSetNode,
     ValueNode,
     VariableNode,
-    ast_to_dict,
 )
+from graphql.pyutils import is_iterable
 from jsonpath_ng import parse as jsonpath_parse
 
 from graphql_authz_proxy.models import FieldNodeDict, RenderedFields
@@ -66,6 +68,33 @@ def extract_user_from_headers(headers: dict) -> tuple[str, str, str]:
     return user_email, user, access_token
 
 
+def graphql_ast_to_dict(
+    node: Node, locations: bool = False
+) -> dict | list | str:
+    """Convert a language AST to a nested Python dictionary.
+
+    Set `locations` to True in order to get the locations as well.
+    """
+    if isinstance(node, Node):
+        res = {}
+        res.update(
+            {
+                key: graphql_ast_to_dict(getattr(node, key), locations)
+                for key in ("kind", *node.keys[1:])
+            }
+        )
+        if locations:
+            loc = node.loc
+            if loc:
+                res["loc"] = dict(start=loc.start, end=loc.end)
+        return res
+    if is_iterable(node):
+        return [graphql_ast_to_dict(sub_node, locations) for sub_node in node]
+    if isinstance(node, OperationType):
+        return node.value
+    return node
+
+
 def convert_fields_to_dict(fields: RenderedFields) -> FieldNodeDict:  # noqa: C901, PLR0912
     """Convert RenderedFields to a nested dict of field arguments and selection sets.
 
@@ -78,18 +107,20 @@ def convert_fields_to_dict(fields: RenderedFields) -> FieldNodeDict:  # noqa: C9
     """
     result = {}
     for field_name, selection in fields.items():
+        if isinstance(selection, FieldNode):
+            continue
         if isinstance(selection, list):
             field_dicts = []
             for field in selection:
                 if isinstance(field, FieldNode):
                     try:
-                        field_dict = ast_to_dict(field)
+                        field_dict = graphql_ast_to_dict(field)
                     except TypeError:
                         # If argument value is a list, convert to tuple for hashing
                         for arg in getattr(field, "arguments", []):
                             if hasattr(arg.value, "values") and isinstance(arg.value.values, list):
                                 arg.value.values = tuple(arg.value.values)
-                        field_dict = ast_to_dict(field)
+                        field_dict = graphql_ast_to_dict(field)
                     field_dicts.append(field_dict)
             if len(field_dicts) == 1:
                 field_dict = field_dicts[0]
@@ -109,12 +140,12 @@ def convert_fields_to_dict(fields: RenderedFields) -> FieldNodeDict:  # noqa: C9
             nested = selection.get("_nested")
             if field_node:
                 try:
-                    field_dict = ast_to_dict(field_node)
+                    field_dict = graphql_ast_to_dict(field_node)
                 except TypeError:
                     for arg in getattr(field_node, "arguments", []):
                         if hasattr(arg.value, "values") and isinstance(arg.value.values, list):
                             arg.value.values = tuple(arg.value.values)
-                    field_dict = ast_to_dict(field_node)
+                    field_dict = graphql_ast_to_dict(field_node)
                 arguments = {arg["name"]["value"]: arg["value"] for arg in field_dict.get("arguments", [])}
             else:
                 arguments = {}
@@ -122,6 +153,8 @@ def convert_fields_to_dict(fields: RenderedFields) -> FieldNodeDict:  # noqa: C9
                 "arguments": arguments,
                 "selection_set": convert_fields_to_dict(nested) if nested else None,
             }
+        else:
+            raise TypeError(f"Unexpected selection node type: {type(selection)}")
     return result
 
 

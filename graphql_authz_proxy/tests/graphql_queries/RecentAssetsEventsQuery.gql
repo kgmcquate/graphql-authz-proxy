@@ -1,0 +1,348 @@
+query RecentAssetEventsQuery($assetKey: AssetKeyInput!, $eventTypeSelectors: [AssetEventHistoryEventTypeSelector!]!, $limit: Int!, $before: String, $after: String, $cursor: String, $partitions: [String!]) {
+  assetsLatestInfo(assetKeys: [$assetKey]) {
+    id
+    ...AssetLatestInfoFragment
+    __typename
+  }
+  assetOrError(assetKey: $assetKey) {
+    ... on Asset {
+      id
+      key {
+        path
+        __typename
+      }
+      assetEventHistory(
+        limit: $limit
+        afterTimestampMillis: $after
+        beforeTimestampMillis: $before
+        eventTypeSelectors: $eventTypeSelectors
+        cursor: $cursor
+        partitions: $partitions
+      ) {
+        results {
+          ...AssetSuccessfulMaterializationFragment
+          ...AssetFailedToMaterializeFragment
+          ...AssetObservationFragment
+          __typename
+        }
+        cursor
+        __typename
+      }
+      __typename
+    }
+    __typename
+  }
+}
+
+fragment AssetObservationFragment on ObservationEvent {
+  partition
+  tags {
+    key
+    value
+    __typename
+  }
+  runOrError {
+    ... on PipelineRun {
+      id
+      mode
+      repositoryOrigin {
+        id
+        repositoryName
+        repositoryLocationName
+        __typename
+      }
+      status
+      pipelineName
+      pipelineSnapshotId
+      __typename
+    }
+    __typename
+  }
+  runId
+  timestamp
+  stepKey
+  label
+  description
+  metadataEntries {
+    ...MetadataEntryFragment
+    __typename
+  }
+  __typename
+}
+
+fragment MetadataEntryFragment on MetadataEntry {
+  label
+  description
+  ... on PathMetadataEntry {
+    path
+    __typename
+  }
+  ... on NotebookMetadataEntry {
+    path
+    __typename
+  }
+  ... on JsonMetadataEntry {
+    jsonString
+    __typename
+  }
+  ... on UrlMetadataEntry {
+    url
+    __typename
+  }
+  ... on TextMetadataEntry {
+    text
+    __typename
+  }
+  ... on MarkdownMetadataEntry {
+    mdStr
+    __typename
+  }
+  ... on PythonArtifactMetadataEntry {
+    module
+    name
+    __typename
+  }
+  ... on FloatMetadataEntry {
+    floatValue
+    __typename
+  }
+  ... on TimestampMetadataEntry {
+    timestamp
+    __typename
+  }
+  ... on IntMetadataEntry {
+    intValue
+    intRepr
+    __typename
+  }
+  ... on BoolMetadataEntry {
+    boolValue
+    __typename
+  }
+  ... on PipelineRunMetadataEntry {
+    runId
+    __typename
+  }
+  ... on AssetMetadataEntry {
+    assetKey {
+      path
+      __typename
+    }
+    __typename
+  }
+  ... on JobMetadataEntry {
+    jobName
+    repositoryName
+    locationName
+    __typename
+  }
+  ... on TableColumnLineageMetadataEntry {
+    lineage {
+      columnName
+      columnDeps {
+        assetKey {
+          path
+          __typename
+        }
+        columnName
+        __typename
+      }
+      __typename
+    }
+    __typename
+  }
+  ... on TableMetadataEntry {
+    ...TableMetadataEntryFragment
+    __typename
+  }
+  ... on TableSchemaMetadataEntry {
+    ...TableSchemaForMetadataEntry
+    __typename
+  }
+  ... on CodeReferencesMetadataEntry {
+    codeReferences {
+      __typename
+      ... on LocalFileCodeReference {
+        filePath
+        lineNumber
+        label
+        __typename
+      }
+      ... on UrlCodeReference {
+        url
+        label
+        __typename
+      }
+    }
+    __typename
+  }
+  ... on PoolMetadataEntry {
+    pool
+    __typename
+  }
+  __typename
+}
+
+fragment TableMetadataEntryFragment on TableMetadataEntry {
+  label
+  table {
+    records
+    schema {
+      ...TableSchemaFragment
+      __typename
+    }
+    __typename
+  }
+  __typename
+}
+
+fragment TableSchemaForMetadataEntry on TableSchemaMetadataEntry {
+  schema {
+    ...TableSchemaFragment
+    __typename
+  }
+  __typename
+}
+
+fragment TableSchemaFragment on TableSchema {
+  columns {
+    name
+    description
+    type
+    tags {
+      key
+      value
+      __typename
+    }
+    constraints {
+      ...ConstraintsForTableColumn
+      __typename
+    }
+    __typename
+  }
+  constraints {
+    other
+    __typename
+  }
+  __typename
+}
+
+fragment ConstraintsForTableColumn on TableColumnConstraints {
+  nullable
+  unique
+  other
+  __typename
+}
+
+fragment AssetSuccessfulMaterializationFragment on MaterializationEvent {
+  partition
+  tags {
+    key
+    value
+    __typename
+  }
+  runOrError {
+    ... on PipelineRun {
+      id
+      mode
+      repositoryOrigin {
+        id
+        repositoryName
+        repositoryLocationName
+        __typename
+      }
+      status
+      pipelineName
+      pipelineSnapshotId
+      __typename
+    }
+    __typename
+  }
+  runId
+  timestamp
+  stepKey
+  label
+  description
+  metadataEntries {
+    ...MetadataEntryFragment
+    __typename
+  }
+  assetLineage {
+    ...AssetLineageFragment
+    __typename
+  }
+  __typename
+}
+
+fragment AssetLineageFragment on AssetLineageInfo {
+  assetKey {
+    path
+    __typename
+  }
+  partitions
+  __typename
+}
+
+fragment AssetFailedToMaterializeFragment on FailedToMaterializeEvent {
+  tags {
+    key
+    value
+    __typename
+  }
+  runOrError {
+    ... on PipelineRun {
+      id
+      mode
+      repositoryOrigin {
+        id
+        repositoryName
+        repositoryLocationName
+        __typename
+      }
+      status
+      pipelineName
+      pipelineSnapshotId
+      __typename
+    }
+    __typename
+  }
+  runId
+  timestamp
+  stepKey
+  label
+  description
+  assetKey {
+    path
+    __typename
+  }
+  partition
+  metadataEntries {
+    ...MetadataEntryFragment
+    __typename
+  }
+  __typename
+}
+
+fragment AssetLatestInfoFragment on AssetLatestInfo {
+  id
+  assetKey {
+    path
+    __typename
+  }
+  unstartedRunIds
+  inProgressRunIds
+  latestRun {
+    id
+    ...AssetLatestInfoRun
+    __typename
+  }
+  __typename
+}
+
+fragment AssetLatestInfoRun on Run {
+  status
+  startTime
+  endTime
+  id
+  __typename
+}
