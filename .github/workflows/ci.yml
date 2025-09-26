@@ -25,15 +25,12 @@ jobs:
       - name: Run tests with coverage
         run: uv run pytest --cov=. --cov-report=xml --cov-report=term tests/
         working-directory: ./graphql_authz_proxy
-      - name: Install pybadges
-        run: pip install pybadges
-      - name: Generate coverage badge
+      - name: Generate coverage badge from coverage.xml
         run: |
-          COVERAGE=$(uv run pytest --cov=. --cov-report=term-missing tests/ | grep 'TOTAL' | awk '{print $4}' | sed 's/%//')
-          pybadges --left-text="coverage" --right-text="${COVERAGE}%" --right-color="green" > ./graphql_authz_proxy/coverage-badge.svg
+          uv run coverage-badge -o coverage-badge.svg -f coverage.xml
         working-directory: ./graphql_authz_proxy
       - name: Commit coverage badge
-        run: |
+        run: |  
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
           git add coverage-badge.svg
