@@ -134,23 +134,21 @@ def _get_user(
 def _validate_user(
     user: User,
     access_token: str,
-    idp_name: str,
-    validate_token: bool,
+    idp_name: str
 ) -> tuple[bool, Response | None]:
-    if validate_token and access_token:
-        identity_provider = get_identity_provider(idp_name)
-        valid, reason = identity_provider.validate_token(access_token, user.username, user.email)
-        if not valid:
-            return None, (jsonify({
-                "errors": [{
-                    "message": f"Authentication failed: {reason}",
-                    "extensions": {
-                        "code": "UNAUTHORIZED",
-                        "user": user.username,
-                        "user_email": user.email,
-                    },
-                }],
-            }), 401)
+    identity_provider = get_identity_provider(idp_name)
+    valid, reason = identity_provider.validate_token(access_token, user.username, user.email)
+    if not valid:
+        return None, (jsonify({
+            "errors": [{
+                "message": f"Authentication failed: {reason}",
+                "extensions": {
+                    "code": "UNAUTHORIZED",
+                    "user": user.username,
+                    "user_email": user.email,
+                },
+            }],
+        }), 401)
     return True, None
 
 
@@ -270,20 +268,23 @@ def proxy_graphql() -> Response:
             username,
             user_email
         )
-        if error_response:
+        if error_response and not groups_config.default_groups:
             return error_response
 
-        is_valid, validation_response = _validate_user(
-            user,
-            access_token,
-            idp_name,
-            validate_token,
-        )
+        if validate_token:
+            is_valid, validation_response = _validate_user(
+                user,
+                access_token,
+                idp_name
+            )
 
-        if not is_valid:
-            return validation_response
+            if not is_valid:
+                return validation_response
 
-        user_groups = [groups_config.get_group(group_name) for group_name in user.groups]
+        if user is None and groups_config.default_groups:
+            user_groups = [groups_config.get_group(group_name) for group_name in groups_config.default_groups]
+        else:
+            user_groups = [groups_config.get_group(group_name) for group_name in user.groups]
         user_rules: UserRules = _collect_field_rules(user_groups)
         if enable_jinja:
             user_rules.render_argument_values(
