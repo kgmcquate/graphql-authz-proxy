@@ -264,6 +264,7 @@ class Groups(_ConfigParser, BaseModel):
     """Groups model containing a list of Group objects."""
 
     groups: list[Group]
+    default_groups: list[str] | None = None
     idp_group_mapping: dict[str, str] | None = None
 
     _group_lookup_cache: dict[str, Group] = {}

@@ -619,3 +619,182 @@ def test_deny_for_denied_object_argument(client) -> None:
 
         response = client.post("/graphql", json={"query": query, "variables": variables}, headers=get_test_headers("test_user@gmail.com", "test_user"))
         assert response.status_code == 403
+
+
+
+def test_unknown_user_with_default_group() -> None:
+    users_config = Users(
+        users=[],
+    )
+
+    groups_config = Groups(
+        groups=[
+            Group(
+                name="viewers",
+                description="Read-only access",
+                permissions=Permissions(
+                    mutations=MutationPolicy(
+                        effect=PolicyEffect.DENY,
+                        fields=[
+                            FieldRule(field_name="*"),
+                        ],
+                    ),
+                    queries=QueryPolicy(
+                        effect=PolicyEffect.ALLOW,
+                        fields=[
+                            FieldRule(field_name="getUser"),
+                        ],
+                    ),
+                ),
+            ),
+        ],
+        default_groups=["viewers"],
+    )
+
+    flask_app = get_flask_app(
+        upstream_url="http://localhost:4000/",
+        upstream_graphql_path="/graphql",
+        users_config=users_config,
+        groups_config=groups_config,
+    )
+
+    with flask_app.test_client() as client:
+        query = """
+        query {
+          getUser(name: "Ann") {
+            id
+            name
+          }
+        }
+        """
+        resp = client.post("/graphql", json={"query": query})
+
+        assert resp.status_code in (200, 502)
+
+def test_unknown_user_with_no_default_group() -> None:
+    users_config = Users(
+        users=[],
+    )
+
+    groups_config = Groups(
+        groups=[
+            Group(
+                name="viewers",
+                description="Read-only access",
+                permissions=Permissions(
+                    mutations=MutationPolicy(
+                        effect=PolicyEffect.DENY,
+                        fields=[
+                            FieldRule(field_name="*"),
+                        ],
+                    ),
+                    queries=QueryPolicy(
+                        effect=PolicyEffect.ALLOW,
+                        fields=[
+                            FieldRule(field_name="getUser"),
+                        ],
+                    ),
+                ),
+            ),
+        ],
+    )
+
+    flask_app = get_flask_app(
+        upstream_url="http://localhost:4000/",
+        upstream_graphql_path="/graphql",
+        users_config=users_config,
+        groups_config=groups_config,
+    )
+
+    with flask_app.test_client() as client:
+        query = """
+        query {
+          getUser(name: "Ann") {
+            id
+            name
+          }
+        }
+        """
+        resp = client.post("/graphql", json={"query": query})
+
+        assert resp.status_code == 403
+        data = resp.get_json()
+        assert "errors" in data
+        assert data["errors"][0]["extensions"]["code"] == "FORBIDDEN"
+
+
+def test_known_user_with_default_group() -> None:
+    users_config = Users(
+        users=[
+            User(
+                username="test_user",
+                email="test_user@gmail.com",
+                groups=["viewers"],
+            ),
+        ],
+    )
+
+    groups_config = Groups(
+        groups=[
+            Group(
+                name="admins",
+                description="Full access",
+                permissions=Permissions(
+                    mutations=MutationPolicy(
+                        effect=PolicyEffect.ALLOW,
+                        fields=[
+                            FieldRule(field_name="*"),
+                        ],
+                    ),
+                    queries=QueryPolicy(
+                        effect=PolicyEffect.ALLOW,
+                        fields=[
+                            FieldRule(field_name="*"),
+                        ],
+                    ),
+                ),
+            ),
+            Group(
+                name="viewers",
+                description="Read-only access",
+                permissions=Permissions(
+                    mutations=MutationPolicy(
+                        effect=PolicyEffect.DENY,
+                        fields=[
+                            FieldRule(field_name="*"),
+                        ],
+                    ),
+                    queries=QueryPolicy(
+                        effect=PolicyEffect.ALLOW,
+                        fields=[
+                            FieldRule(field_name="getUser"),
+                        ],
+                    ),
+                ),
+            )
+        ],
+        default_groups=["admins"],
+    )
+
+    flask_app = get_flask_app(
+        upstream_url="http://localhost:4000/",
+        upstream_graphql_path="/graphql",
+        users_config=users_config,
+        groups_config=groups_config,
+    )
+
+    with flask_app.test_client() as client:
+        query = """
+        mutation {
+          updateUser(name: "Ann") {
+            id
+            name(name: "Anne")
+          }
+        }
+        """
+        resp = client.post("/graphql", json={"query": query}, headers=get_test_headers("test_user@gmail.com", "test_user"))
+
+        assert resp.status_code == 403
+        data = resp.get_json()
+        assert "errors" in data
+        assert data["errors"][0]["extensions"]["code"] == "FORBIDDEN"
