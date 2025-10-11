@@ -257,6 +257,7 @@ class Group(BaseModel):
     name: str
     permissions: Permissions
     description: str | None = None
+    idp_groups: list[str] | None = None
 
 
 class Groups(_ConfigParser, BaseModel):
@@ -265,9 +266,33 @@ class Groups(_ConfigParser, BaseModel):
 
     groups: list[Group]
     default_groups: list[str] | None = None
-    idp_group_mapping: dict[str, str] | None = None
 
     _group_lookup_cache: dict[str, Group] = {}
+
+    def model_post_init(self, _: None = None) -> None:
+        """Post-init hook to initialize group lookup cache."""
+        self._idp_group_mapping: dict[str, list[str]] = {}
+        for group in self.groups:
+            if group.idp_groups:
+                for idp_group in group.idp_groups:
+                    if idp_group not in self._idp_group_mapping:
+                        self._idp_group_mapping[idp_group] = []
+                    self._idp_group_mapping[idp_group].append(group.name)
+
+    def get_idp_groups(self, user_idp_groups: list[str]) -> list[str]:
+        """Get local group names mapped from IdP group names.
+
+        Args:
+            user_idp_groups (list[str]): List of user IdP group names.
+
+        Returns:
+            list[str]: List of local group names.
+        """
+        local_groups = []
+        for idp_group in user_idp_groups:
+            local_groups.extend(self._idp_group_mapping.get(idp_group, []))
+        return local_groups
+
     def get_group(self, group_name: str) -> Group | None:
         """Get a group by name.
 
@@ -286,14 +311,6 @@ class Groups(_ConfigParser, BaseModel):
             if group.name == group_name.strip():
                 self._group_lookup_cache[group_name] = group
                 return group
-            
-        # If group not found, check IdP group mapping if configured
-        if self.idp_group_mapping and group_name in self.idp_group_mapping:
-            mapped_name = self.idp_group_mapping[group_name]
-            for group in self.groups:
-                if group.name == mapped_name.strip():
-                    self._group_lookup_cache[group_name] = group
-                    return group
 
         return None
 

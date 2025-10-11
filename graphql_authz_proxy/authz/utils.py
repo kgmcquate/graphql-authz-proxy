@@ -47,7 +47,7 @@ def get_value_of_jsonpath(data: dict, path: str) -> Any:  # noqa: ANN401
         return None
 
 
-def extract_user_from_headers(headers: dict) -> tuple[str, str, str]:
+def extract_user_from_headers(headers: dict) -> tuple[str, str, str, list[str]]:
     """Extract user email, username, and access token from HTTP headers.
 
     Args:
@@ -65,7 +65,9 @@ def extract_user_from_headers(headers: dict) -> tuple[str, str, str]:
     assert isinstance(user, str), f"X-Forwarded-User header is not a string: {user} ({type(user)})"
     access_token = headers.get("X-Forwarded-Access-Token", "")
     assert isinstance(access_token, str), f"X-Forwarded-Access-Token header is not a string: ({type(access_token)})"
-    return user_email, user, access_token
+
+    groups = [group.strip() for group in headers.get("X-Forwarded-Groups", "").split(",")]
+    return user_email, user, access_token, groups
 
 
 def graphql_ast_to_dict(

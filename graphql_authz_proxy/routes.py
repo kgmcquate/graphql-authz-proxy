@@ -116,6 +116,7 @@ def _get_user(
     user = users_config.get_user(username)
     if user is None:
         user = users_config.get_user_by_email(user_email)
+
     if user is None:
         return None, (jsonify({
             "errors": [{
@@ -253,7 +254,7 @@ def proxy_graphql() -> Response:
         query, variables, operation_name = _parse_graphql_request()
         document: DocumentNode = parse(query)
         current_app.logger.info(f"Extracting user information from headers: {request.headers}")
-        user_email, username, access_token = extract_user_from_headers(request.headers)
+        user_email, username, access_token, idp_groups = extract_user_from_headers(request.headers)
         users_config: Users = current_app.config.get("users_config")
         groups_config: Groups = current_app.config.get("groups_config")
         enable_jinja: bool = current_app.config.get("enable_config_jinja", False)
@@ -270,6 +271,8 @@ def proxy_graphql() -> Response:
         )
         if error_response and not groups_config.default_groups:
             return error_response
+        
+        groups_from_idp = groups_config.get_idp_groups(idp_groups)
 
         if validate_token:
             is_valid, validation_response = _validate_user(
@@ -285,6 +288,9 @@ def proxy_graphql() -> Response:
             user_groups = [groups_config.get_group(group_name) for group_name in groups_config.default_groups]
         else:
             user_groups = [groups_config.get_group(group_name) for group_name in user.groups]
+
+        user_groups.extend(groups_from_idp)
+        
         user_rules: UserRules = _collect_field_rules(user_groups)
         if enable_jinja:
             user_rules.render_argument_values(
