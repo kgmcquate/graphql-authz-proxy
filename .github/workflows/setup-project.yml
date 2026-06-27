@@ -8,6 +8,12 @@
 
 name: Setup Ticket Manager Project
 
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+  organization_projects: admin
+
 on:
   workflow_dispatch:
     inputs:
