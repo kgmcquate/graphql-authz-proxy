@@ -21,5 +21,3 @@ jobs:
     uses: kgmcquate/ai-agents/.github/workflows/setup-project.yml@main
     with:
       project_title: ${{ inputs.project_title }}
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
