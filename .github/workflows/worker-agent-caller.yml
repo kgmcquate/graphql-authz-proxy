@@ -18,7 +18,7 @@ jobs:
   run:
     uses: kgmcquate/ai-agents/.github/workflows/worker-agent.yml@main
     with:
-      project_number: 1
+      project_number: 3
       # Optional — defaults to: api,auth,frontend,backend,database,infra,config
       areas: "api,auth,frontend,backend,database,infra,config"
       # Optional — set to your test command so the wrapper verifies tests pass before opening the PR.
