@@ -1,0 +1,16 @@
+name: Ticket Manager
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  run:
+    uses: kgmcquate/ai-agents/.github/workflows/ticket-manager.yml@main
+    with:
+      project_number: 1  # TODO: update after running setup-project workflow
+      areas: "authz,identity,graphql,api,cli,infra,tests"
+    secrets:
+      GH_PAT: ${{ secrets.GH_PAT }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
