@@ -12,7 +12,6 @@ permissions:
   contents: read
   issues: write
   pull-requests: read
-  organization_projects: admin
 
 on:
   workflow_dispatch:
@@ -27,3 +26,5 @@ jobs:
     uses: kgmcquate/ai-agents/.github/workflows/setup-project.yml@main
     with:
       project_title: ${{ inputs.project_title }}
+    secrets:
+      GH_PROJECTS_TOKEN: ${{ secrets.GH_PROJECTS_TOKEN }}
