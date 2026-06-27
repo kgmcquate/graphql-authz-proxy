@@ -9,7 +9,7 @@ jobs:
   run:
     uses: kgmcquate/ai-agents/.github/workflows/ticket-manager.yml@main
     with:
-      project_number: 1  # TODO: update after running setup-project workflow
+      project_number: 3
       areas: "authz,identity,graphql,api,cli,infra,tests"
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
