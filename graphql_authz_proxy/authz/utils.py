@@ -23,6 +23,26 @@ from graphql_authz_proxy.models import FieldNodeDict, RenderedFields
 def get_value_of_jsonpath(data: dict, path: str) -> Any:  # noqa: ANN401
     """Get nested value from data using JSONPath notation.
 
+    Delegates to the native Rust implementation when the optional
+    ``graphql_authz_proxy_rs`` extension is built (see issue #21), and
+    transparently falls back to the pure-Python implementation otherwise.
+
+    Args:
+        data (dict): The data to search.
+        path (str): JSONPath string (without leading $).
+
+    Returns:
+        Any: The value(s) found, or None if not found.
+
+    """
+    if _rust.RUST_AVAILABLE:
+        return _rust.get_value_of_jsonpath(data, path)
+    return _get_value_of_jsonpath_py(data, path)
+
+
+def _get_value_of_jsonpath_py(data: dict, path: str) -> Any:  # noqa: ANN401
+    """Pure-Python reference implementation of :func:`get_value_of_jsonpath`.
+
     Args:
         data (dict): The data to search.
         path (str): JSONPath string (without leading $).

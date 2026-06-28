@@ -34,6 +34,18 @@ def extract_user_from_headers(headers: object) -> tuple[str, str, str, list[str]
     return _native.extract_user_from_headers(headers)
 
 
+def get_value_of_jsonpath(data: object, path: str) -> object:
+    """Native JSONPath lookup.
+
+    Raises:
+        RuntimeError: If the native extension is not available.
+
+    """
+    if _native is None:
+        raise RuntimeError("Rust extension 'graphql_authz_proxy_rs' is not available")
+    return _native.get_value_of_jsonpath(data, path)
+
+
 def version() -> str:
     """Return the version reported by the native extension.
 
