@@ -33,4 +33,5 @@ This project uses a branching and release strategy with automation:
 ## Manual Release
 - You can trigger a release manually via the GitHub Actions workflow dispatch.
 
-See `.github/workflows/release.yml` and `.python-semantic-release` for details.
+See `.github/workflows/release.yml` and the `[tool.semantic_release]` section of
+`pyproject.toml` for details.

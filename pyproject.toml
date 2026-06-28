@@ -59,6 +59,21 @@ Changelog = "https://github.com/kgmcquate/graphql-authz-proxy/blob/main/CHANGELO
 [tool.hatch.build.targets.wheel]
 packages = ["graphql_authz_proxy"]
 
+[tool.semantic_release]
+# Keep the package __version__ and the project version in lock-step.
+version_variables = ["graphql_authz_proxy/__init__.py:__version__"]
+version_toml = ["pyproject.toml:project.version"]
+# Wheels/sdists are not published to PyPI; releasing only creates tags,
+# GitHub releases and the changelog, so building is skipped in the workflow.
+build_command = ""
+upload_to_pypi = false
+changelog_file = "CHANGELOG.md"
+commit_message = "chore(release): {version} [skip ci]"
+tag_format = "v{version}"
+
+[tool.semantic_release.branches.main]
+match = "main"
+
 [tool.ruff]
 line-length = 120
 exclude = [".venv", "__pycache__", "build", "dist", "tests", "identity_providers"]
