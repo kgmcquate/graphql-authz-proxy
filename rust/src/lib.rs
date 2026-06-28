@@ -8,6 +8,7 @@
 
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
+use pyo3::types::{PyDict, PyList};
 
 /// Parse a raw `X-Forwarded-Groups` header value into a list of group names.
 ///
@@ -45,6 +46,157 @@ fn extract_user_from_headers(
     Ok((user_email, user, access_token, groups))
 }
 
+/// A single step in a JSONPath expression.
+///
+/// Only the subset of JSONPath actually exercised by the proxy is modelled:
+/// dotted field access, integer indices (including negative ones) and
+/// wildcards (`a.*` / `a[*]`). Anything outside this grammar fails to parse,
+/// which the caller maps to "no match" -- mirroring how the pure-Python
+/// reference swallows `jsonpath_ng` errors and returns `None`.
+#[derive(Debug, PartialEq)]
+enum Step {
+    /// Access a mapping key by name.
+    Field(String),
+    /// Index into a sequence (negative indices count from the end).
+    Index(isize),
+    /// Match every element of a sequence or every value of a mapping.
+    Wildcard,
+}
+
+/// Parse a `$.`-relative JSONPath string into a list of [`Step`]s.
+///
+/// Returns `None` for any syntax outside the supported subset, so the caller
+/// can treat unparseable paths as a non-match.
+fn parse_path(path: &str) -> Option<Vec<Step>> {
+    let mut steps = Vec::new();
+    let bytes = path.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'.' => {
+                // A leading or doubled '.' (empty field name) is invalid.
+                i += 1;
+                let start = i;
+                while i < bytes.len() && bytes[i] != b'.' && bytes[i] != b'[' {
+                    i += 1;
+                }
+                let name = &path[start..i];
+                if name.is_empty() {
+                    return None;
+                }
+                steps.push(field_or_wildcard(name));
+            }
+            b'[' => {
+                let end = path[i..].find(']')? + i;
+                let inner = &path[i + 1..end];
+                steps.push(parse_bracket(inner)?);
+                i = end + 1;
+            }
+            _ => {
+                // The very first segment has no leading separator.
+                if !steps.is_empty() {
+                    return None;
+                }
+                let start = i;
+                while i < bytes.len() && bytes[i] != b'.' && bytes[i] != b'[' {
+                    i += 1;
+                }
+                steps.push(field_or_wildcard(&path[start..i]));
+            }
+        }
+    }
+    Some(steps)
+}
+
+/// Map a bare segment name to a [`Step::Wildcard`] or [`Step::Field`].
+fn field_or_wildcard(name: &str) -> Step {
+    if name == "*" {
+        Step::Wildcard
+    } else {
+        Step::Field(name.to_string())
+    }
+}
+
+/// Parse the contents of a `[...]` selector into a [`Step`].
+fn parse_bracket(inner: &str) -> Option<Step> {
+    if inner == "*" {
+        Some(Step::Wildcard)
+    } else {
+        inner.parse::<isize>().ok().map(Step::Index)
+    }
+}
+
+/// Recursively collect every value reachable from `data` via `steps`.
+fn collect_matches<'py>(
+    data: &Bound<'py, PyAny>,
+    steps: &[Step],
+    out: &mut Vec<Bound<'py, PyAny>>,
+) {
+    let Some((step, rest)) = steps.split_first() else {
+        out.push(data.clone());
+        return;
+    };
+    match step {
+        Step::Field(name) => {
+            if let Ok(dict) = data.downcast::<PyDict>() {
+                if let Ok(Some(value)) = dict.get_item(name) {
+                    collect_matches(&value, rest, out);
+                }
+            }
+        }
+        Step::Index(index) => {
+            if let Ok(list) = data.downcast::<PyList>() {
+                let len = list.len() as isize;
+                let resolved = if *index < 0 { index + len } else { *index };
+                if resolved >= 0 && resolved < len {
+                    if let Ok(value) = list.get_item(resolved as usize) {
+                        collect_matches(&value, rest, out);
+                    }
+                }
+            }
+        }
+        Step::Wildcard => {
+            if let Ok(list) = data.downcast::<PyList>() {
+                for value in list.iter() {
+                    collect_matches(&value, rest, out);
+                }
+            } else if let Ok(dict) = data.downcast::<PyDict>() {
+                for (_key, value) in dict.iter() {
+                    collect_matches(&value, rest, out);
+                }
+            }
+        }
+    }
+}
+
+/// Resolve a JSONPath expression against `data`, mirroring
+/// `graphql_authz_proxy.authz.utils.get_value_of_jsonpath`.
+///
+/// The `path` is the JSONPath body without the leading `$.`. Returns `None`
+/// when `data` or `path` is falsy, when the path does not parse, or when it
+/// matches nothing. A single match is returned unwrapped; multiple matches are
+/// returned as a list.
+#[pyfunction]
+fn get_value_of_jsonpath(
+    py: Python<'_>,
+    data: &Bound<'_, PyAny>,
+    path: &str,
+) -> PyResult<PyObject> {
+    if path.is_empty() || !data.is_truthy()? {
+        return Ok(py.None());
+    }
+    let Some(steps) = parse_path(path) else {
+        return Ok(py.None());
+    };
+    let mut matches = Vec::new();
+    collect_matches(data, &steps, &mut matches);
+    match matches.len() {
+        0 => Ok(py.None()),
+        1 => Ok(matches.into_iter().next().unwrap().unbind()),
+        _ => Ok(PyList::new(py, matches)?.into_any().unbind()),
+    }
+}
+
 /// Return the version of the native crate, for diagnostics/health checks.
 #[pyfunction]
 fn version() -> String {
@@ -56,6 +208,7 @@ fn version() -> String {
 fn graphql_authz_proxy_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_function(wrap_pyfunction!(extract_user_from_headers, m)?)?;
+    m.add_function(wrap_pyfunction!(get_value_of_jsonpath, m)?)?;
     m.add_function(wrap_pyfunction!(version, m)?)?;
     Ok(())
 }
@@ -81,5 +234,41 @@ mod tests {
     #[test]
     fn single_group_has_no_separator() {
         assert_eq!(parse_groups("admins"), vec!["admins"]);
+    }
+
+    #[test]
+    fn parses_dotted_field_path() {
+        assert_eq!(
+            parse_path("a.b.c"),
+            Some(vec![
+                Step::Field("a".into()),
+                Step::Field("b".into()),
+                Step::Field("c".into()),
+            ])
+        );
+    }
+
+    #[test]
+    fn parses_indices_and_wildcards() {
+        assert_eq!(
+            parse_path("a[0].b[-1].c[*]"),
+            Some(vec![
+                Step::Field("a".into()),
+                Step::Index(0),
+                Step::Field("b".into()),
+                Step::Index(-1),
+                Step::Field("c".into()),
+                Step::Wildcard,
+            ])
+        );
+        assert_eq!(parse_path("a.*"), Some(vec![Step::Field("a".into()), Step::Wildcard]));
+    }
+
+    #[test]
+    fn rejects_malformed_paths() {
+        // Doubled separators (empty field names) and unterminated brackets.
+        assert_eq!(parse_path("a..b"), None);
+        assert_eq!(parse_path("a["), None);
+        assert_eq!(parse_path("a[x]"), None);
     }
 }
