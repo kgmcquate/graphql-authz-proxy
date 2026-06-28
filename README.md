@@ -10,6 +10,16 @@ Proxy to enforce authorization rules on GraphQL APIs.
 - Supports config-driven user/group/policy management
 - Easy integration with existing GraphQL servers
 
+## Installation
+
+Install the latest release from PyPI:
+
+```bash
+pip install graphql-authz-proxy
+```
+
+This installs the `gqlproxy` CLI entry point.
+
 ## Usage
 
 ### Running the Proxy
