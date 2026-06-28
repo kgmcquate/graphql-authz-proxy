@@ -36,6 +36,17 @@ dependencies = [
     "sqlalchemy>=2.0.43",
     "typer>=0.17.4",
 ]
+
+[project.scripts]
+gqlproxy = "graphql_authz_proxy.cli:typer_app"
+
+[project.urls]
+Homepage = "https://github.com/kgmcquate/graphql-authz-proxy"
+Repository = "https://github.com/kgmcquate/graphql-authz-proxy"
+Issues = "https://github.com/kgmcquate/graphql-authz-proxy/issues"
+Changelog = "https://github.com/kgmcquate/graphql-authz-proxy/blob/main/CHANGELOG.md"
+
+
 [dependency-groups]
 dev = [
     "psycopg2-binary>=2.9.10",
@@ -46,15 +57,6 @@ dev = [
     "pybadges>=3.0.1",
     "anybadge>=1.16.0"
 ]
-
-[project.scripts]
-gqlproxy = "graphql_authz_proxy.cli:typer_app"
-
-[project.urls]
-Homepage = "https://github.com/kgmcquate/graphql-authz-proxy"
-Repository = "https://github.com/kgmcquate/graphql-authz-proxy"
-Issues = "https://github.com/kgmcquate/graphql-authz-proxy/issues"
-Changelog = "https://github.com/kgmcquate/graphql-authz-proxy/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["graphql_authz_proxy"]
