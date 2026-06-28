@@ -16,6 +16,7 @@ from graphql import (
 from graphql.pyutils import is_iterable
 from jsonpath_ng import parse as jsonpath_parse
 
+from graphql_authz_proxy import _rust
 from graphql_authz_proxy.models import FieldNodeDict, RenderedFields
 
 
@@ -50,11 +51,30 @@ def get_value_of_jsonpath(data: dict, path: str) -> Any:  # noqa: ANN401
 def extract_user_from_headers(headers: dict) -> tuple[str, str, str, list[str]]:
     """Extract user email, username, and access token from HTTP headers.
 
+    Delegates to the native Rust implementation when the optional
+    ``graphql_authz_proxy_rs`` extension is built (see issue #14), and
+    transparently falls back to the pure-Python implementation otherwise.
+
     Args:
         headers (dict): HTTP request headers.
 
     Returns:
-        tuple: (user_email, username, access_token)
+        tuple: (user_email, username, access_token, groups)
+
+    """
+    if _rust.RUST_AVAILABLE:
+        return _rust.extract_user_from_headers(headers)
+    return _extract_user_from_headers_py(headers)
+
+
+def _extract_user_from_headers_py(headers: dict) -> tuple[str, str, str, list[str]]:
+    """Pure-Python reference implementation of :func:`extract_user_from_headers`.
+
+    Args:
+        headers (dict): HTTP request headers.
+
+    Returns:
+        tuple: (user_email, username, access_token, groups)
 
     """
     user_email = headers.get("X-Forwarded-Email", "")
