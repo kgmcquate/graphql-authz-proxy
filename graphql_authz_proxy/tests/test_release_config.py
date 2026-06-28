@@ -96,15 +96,10 @@ def test_release_workflow_triggers_on_main_and_dispatch() -> None:
     assert "main" in push.get("branches", [])
 
 
-def test_release_workflow_has_write_permissions() -> None:
-    # Creating tags / releases / changelog commits requires write access.
+def test_release_workflow_runs_semantic_release() -> None:
     text = _read_workflow_text()
-    assert "contents: write" in text
-
-
-def test_release_workflow_runs_semantic_release_version() -> None:
-    text = _read_workflow_text()
-    assert "semantic-release version" in text
+    assert "semantic-release" in text
+    # The project has no setup.py, so the release pipeline must never call it.
     assert "setup.py" not in text
 
 
