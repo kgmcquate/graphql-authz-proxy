@@ -1,0 +1,15 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "graphql-authz-proxy-rs"
+description = "Native Rust components for graphql-authz-proxy"
+requires-python = ">=3.9"
+classifiers = ["Programming Language :: Rust"]
+dynamic = ["version"]
+
+[tool.maturin]
+# Build a bare extension module (no Python source package wraps it); the
+# `graphql_authz_proxy._rust` shim is responsible for loading it.
+module-name = "graphql_authz_proxy_rs"

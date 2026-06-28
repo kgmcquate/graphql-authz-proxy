@@ -97,6 +97,31 @@ Examples available in [examples/configuration/permissions_examples.md](examples/
 - All config files must be valid YAML and match the schema above.
 - `field_name: "*"` means all fields/operations are allowed/denied.
 
+## Native (Rust) components
+
+Performance-sensitive parts of the proxy are being incrementally rewritten in
+Rust (see issue #14). The Rust code lives in [`rust/`](rust/) and is compiled
+with [maturin](https://www.maturin.rs/) + [PyO3](https://pyo3.rs/) into an
+optional Python extension module named `graphql_authz_proxy_rs`.
+
+The extension is **optional**: the package loads it through
+`graphql_authz_proxy._rust`, and every ported function keeps a pure-Python
+fallback, so the proxy works identically whether or not the extension is built.
+`graphql_authz_proxy._rust.RUST_AVAILABLE` reports which path is active.
+
+Build and install it into your environment with:
+
+```bash
+# requires a Rust toolchain (https://rustup.rs)
+pip install ./rust
+```
+
+Run the Rust unit tests with:
+
+```bash
+cd rust && cargo test
+```
+
 ## License
 
 MIT
